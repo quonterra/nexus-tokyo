@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  images: {
-    formats: ['image/avif', 'image/webp'],
+  // The LP is a static page at public/index.html
+  async rewrites() {
+    return {
+      beforeFiles: [{ source: "/", destination: "/index.html" }],
+    };
   },
 };
 
