@@ -38,6 +38,7 @@ export default function AdminPage() {
   const [capacity, setCapacity] = useState(10);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [broadcastingId, setBroadcastingId] = useState<string | null>(null);
 
   async function loadEvents(pw: string) {
     setLoading(true);
@@ -169,6 +170,27 @@ export default function AdminPage() {
       await loadEvents(password);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleBroadcast(ev: EventRow) {
+    const ok = window.confirm(
+      `「${ev.title}」を友だち全員に配信します。よろしいですか？（取り消せません）`
+    );
+    if (!ok) return;
+    setBroadcastingId(ev.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/events/${ev.id}/broadcast`, {
+        method: "POST",
+        headers: { "x-admin-password": password },
+      });
+      if (!res.ok) {
+        setError("配信に失敗しました");
+        return;
+      }
+    } finally {
+      setBroadcastingId(null);
     }
   }
 
@@ -335,6 +357,15 @@ export default function AdminPage() {
                     >
                       {ev.status === "published" ? "公開中" : "下書き"}
                     </span>
+                    {ev.status === "published" && (
+                      <button
+                        onClick={() => handleBroadcast(ev)}
+                        disabled={broadcastingId === ev.id}
+                        className="text-xs text-org-text underline underline-offset-2 disabled:opacity-50"
+                      >
+                        {broadcastingId === ev.id ? "配信中…" : "友だちに配信する"}
+                      </button>
+                    )}
                     <button
                       onClick={() => startEdit(ev)}
                       className="text-xs text-org-text underline underline-offset-2"
