@@ -199,8 +199,14 @@ export default function AdminPage() {
     return (
       <main className="min-h-screen bg-org-pale flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl shadow-m p-8 w-full max-w-xs text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/assets/nexus-logo.png" alt="NEXUS TOKYO" className="h-8 mx-auto mb-6" />
+          <div className="flex items-center justify-center gap-2 mb-6">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icon.png" alt="" className="h-9 w-9" />
+            <div className="text-left leading-tight">
+              <div className="font-bold text-ink text-sm tracking-wide">NEXUS TOKYO</div>
+              <div className="text-ink-hint text-[10px] tracking-widest">EVENT ADMIN</div>
+            </div>
+          </div>
           <p className="text-ink-sub text-xs mb-5">イベント管理画面</p>
           <input
             type="password"
@@ -224,19 +230,23 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-bg">
-      <header className="bg-white border-b border-gray-line sticky top-0 z-10">
+    <main className="min-h-screen bg-org-pale">
+      <header className="bg-white border-b-2 border-org sticky top-0 z-10 shadow-s">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/assets/nexus-logo.png" alt="NEXUS TOKYO" className="h-6" />
-          <span className="text-ink-hint text-xs">｜イベント管理</span>
+          <img src="/icon.png" alt="" className="h-8 w-8" />
+          <div className="leading-tight">
+            <div className="font-bold text-ink text-sm tracking-wide">NEXUS TOKYO</div>
+            <div className="text-ink-hint text-[10px] tracking-widest">EVENT ADMIN</div>
+          </div>
         </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-8">
         <section className="bg-white rounded-2xl shadow-s p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-ink">
+            <h2 className="text-base font-semibold text-ink flex items-center gap-2">
+              <span className="inline-block w-1 h-4 bg-org rounded-full" />
               {editingId ? "イベントを編集" : "新規イベント作成"}
             </h2>
             {editingId && (
@@ -345,18 +355,26 @@ export default function AdminPage() {
 
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-ink">登録済みイベント</h2>
+            <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
+              <span className="inline-block w-1 h-4 bg-org rounded-full" />
+              登録済みイベント
+            </h2>
             <button
               onClick={handleBroadcastAll}
               disabled={broadcastingAll}
-              className="rounded-lg bg-org text-white text-xs font-medium px-3 py-1.5 shadow-org disabled:opacity-50"
+              className="rounded-lg border border-org bg-white text-org-text text-xs font-medium px-3 py-1.5 hover:bg-org-pale transition disabled:opacity-50"
             >
               {broadcastingAll ? "配信中…" : "友だちに配信する（公開中の全イベント）"}
             </button>
           </div>
           <div className="flex flex-col gap-3">
             {events.map((ev) => (
-              <div key={ev.id} className="bg-white rounded-xl shadow-s p-4">
+              <div
+                key={ev.id}
+                className={`bg-white rounded-xl shadow-s p-4 border-l-4 ${
+                  ev.status === "published" ? "border-org" : "border-gray-line"
+                }`}
+              >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium text-ink text-sm">{ev.title}</span>
                   <div className="flex items-center gap-2">
