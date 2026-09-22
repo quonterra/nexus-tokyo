@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
+type QuestionInput = {
+  label: string;
+  inputType: "text" | "textarea" | "select" | "radio";
+  options?: string[];
+  required?: boolean;
+};
+
 function checkAuth(req: Request) {
   const password = req.headers.get("x-admin-password");
   return password && password === process.env.ADMIN_PASSWORD;
@@ -13,7 +20,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabase
     .from("events")
     .select(
-      "id, title, description, image_url, location, status, created_at, slots ( id, starts_at, capacity, reserved_count )"
+      "id, title, description, image_url, location, status, created_at, slots ( id, starts_at, capacity, reserved_count ), event_questions ( id, label, input_type, options, required, sort_order )"
     )
     .order("created_at", { ascending: false });
 
@@ -25,7 +32,7 @@ export async function POST(req: Request) {
   if (!checkAuth(req)) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
   const body = await req.json();
-  const { title, description, imageUrl, location, locationUrl, status, slots } = body as {
+  const { title, description, imageUrl, location, locationUrl, status, slots, questions } = body as {
     title: string;
     description?: string;
     imageUrl?: string;
@@ -33,6 +40,7 @@ export async function POST(req: Request) {
     locationUrl?: string;
     status: "draft" | "published";
     slots: { startsAt: string; capacity: number }[];
+    questions?: QuestionInput[];
   };
 
   if (!title || !slots?.length) {
@@ -60,6 +68,20 @@ export async function POST(req: Request) {
   );
 
   if (slotsError) return NextResponse.json({ error: slotsError.message }, { status: 500 });
+
+  if (questions?.length) {
+    const { error: questionsError } = await supabase.from("event_questions").insert(
+      questions.map((q, i) => ({
+        event_id: event.id,
+        label: q.label,
+        input_type: q.inputType,
+        options: q.options?.length ? q.options : null,
+        required: q.required ?? false,
+        sort_order: i,
+      }))
+    );
+    if (questionsError) return NextResponse.json({ error: questionsError.message }, { status: 500 });
+  }
 
   return NextResponse.json({ event });
 }

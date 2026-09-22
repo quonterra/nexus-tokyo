@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 
 type Slot = { id: string; starts_at: string; capacity: number; reserved_count: number };
+type EventQuestion = {
+  id: string;
+  label: string;
+  input_type: string;
+  options: string[] | null;
+  required: boolean;
+  sort_order: number;
+};
 type EventRow = {
   id: string;
   title: string;
@@ -11,6 +19,13 @@ type EventRow = {
   location: string | null;
   status: string;
   slots: Slot[];
+  event_questions: EventQuestion[];
+};
+type QuestionDraft = {
+  label: string;
+  inputType: "text" | "textarea" | "select" | "radio";
+  options: string;
+  required: boolean;
 };
 
 function toDatetimeLocal(iso: string) {
@@ -39,6 +54,7 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [broadcastingAll, setBroadcastingAll] = useState(false);
+  const [questions, setQuestions] = useState<QuestionDraft[]>([]);
 
   async function loadEvents(pw: string) {
     setLoading(true);
@@ -80,6 +96,19 @@ export default function AdminPage() {
     setCapacity(10);
     setStatus("draft");
     setError("");
+    setQuestions([]);
+  }
+
+  function addQuestion() {
+    setQuestions((qs) => [...qs, { label: "", inputType: "text", options: "", required: false }]);
+  }
+
+  function updateQuestion(index: number, patch: Partial<QuestionDraft>) {
+    setQuestions((qs) => qs.map((q, i) => (i === index ? { ...q, ...patch } : q)));
+  }
+
+  function removeQuestion(index: number) {
+    setQuestions((qs) => qs.filter((_, i) => i !== index));
   }
 
   function startEdit(ev: EventRow) {
@@ -94,6 +123,16 @@ export default function AdminPage() {
     setSlotDate(slot ? toDatetimeLocal(slot.starts_at) : "");
     setCapacity(slot?.capacity ?? 10);
     setError("");
+    setQuestions(
+      [...(ev.event_questions ?? [])]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((q) => ({
+          label: q.label,
+          inputType: q.input_type as QuestionDraft["inputType"],
+          options: (q.options ?? []).join(", "),
+          required: q.required,
+        }))
+    );
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -129,6 +168,21 @@ export default function AdminPage() {
     setError("");
     setSaving(true);
     try {
+      const questionsPayload = questions
+        .filter((q) => q.label.trim())
+        .map((q) => ({
+          label: q.label.trim(),
+          inputType: q.inputType,
+          options:
+            q.inputType === "select" || q.inputType === "radio"
+              ? q.options
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : undefined,
+          required: q.required,
+        }));
+
       if (editingId) {
         const res = await fetch(`/api/admin/events/${editingId}`, {
           method: "PATCH",
@@ -142,6 +196,7 @@ export default function AdminPage() {
             slotId: editingSlotId,
             startsAt: new Date(slotDate).toISOString(),
             capacity,
+            questions: questionsPayload,
           }),
         });
         if (!res.ok) {
@@ -159,6 +214,7 @@ export default function AdminPage() {
             location,
             status,
             slots: [{ startsAt: new Date(slotDate).toISOString(), capacity }],
+            questions: questionsPayload,
           }),
         });
         if (!res.ok) {
@@ -305,6 +361,75 @@ export default function AdminPage() {
                 onChange={(e) => setLocation(e.target.value)}
                 className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
               />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-ink-sub">参加者への質問（任意）</label>
+                <button
+                  type="button"
+                  onClick={addQuestion}
+                  className="text-xs text-org-text underline underline-offset-2"
+                >
+                  ＋ 質問を追加
+                </button>
+              </div>
+              {questions.length === 0 ? (
+                <p className="text-ink-hint text-xs">
+                  予約時に入力してもらいたい項目（アレルギーの有無、当日の連絡先など）があれば追加できます。
+                </p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {questions.map((q, i) => (
+                    <div key={i} className="rounded-lg border border-gray-line p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          placeholder="質問内容（例：アレルギーの有無）"
+                          value={q.label}
+                          onChange={(e) => updateQuestion(i, { label: e.target.value })}
+                          className="flex-1 rounded-lg border border-gray-line px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeQuestion(i)}
+                          className="text-ink-hint text-xs shrink-0"
+                        >
+                          削除
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <select
+                          value={q.inputType}
+                          onChange={(e) =>
+                            updateQuestion(i, { inputType: e.target.value as QuestionDraft["inputType"] })
+                          }
+                          className="rounded-lg border border-gray-line px-2 py-1.5 text-xs"
+                        >
+                          <option value="text">1行テキスト</option>
+                          <option value="textarea">複数行テキスト</option>
+                          <option value="select">選択式（プルダウン）</option>
+                        </select>
+                        <label className="flex items-center gap-1 text-xs text-ink-sub">
+                          <input
+                            type="checkbox"
+                            checked={q.required}
+                            onChange={(e) => updateQuestion(i, { required: e.target.checked })}
+                          />
+                          必須にする
+                        </label>
+                      </div>
+                      {q.inputType === "select" && (
+                        <input
+                          placeholder="選択肢をカンマ区切りで入力（例：あり, なし）"
+                          value={q.options}
+                          onChange={(e) => updateQuestion(i, { options: e.target.value })}
+                          className="w-full rounded-lg border border-gray-line px-3 py-2 text-xs mt-2"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

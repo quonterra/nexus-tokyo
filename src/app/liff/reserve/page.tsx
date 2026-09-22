@@ -219,11 +219,14 @@ export default function ReservePage() {
                 setStep("list");
                 setSelectedEvent(null);
               }}
-              className="text-org text-sm font-medium underline"
+              className="rounded-xl bg-org text-white font-medium py-3 text-sm shadow-org"
             >
               イベント一覧に戻る
             </button>
-            <button onClick={loadMine} className="text-ink-hint text-xs underline">
+            <button
+              onClick={loadMine}
+              className="rounded-xl border border-org text-org-text font-medium py-3 text-sm bg-white"
+            >
               予約の確認・キャンセルはこちら
             </button>
           </div>
@@ -235,9 +238,7 @@ export default function ReservePage() {
   if (step === "mine") {
     return (
       <Shell>
-        <button onClick={() => setStep("list")} className="text-ink-hint text-xs mb-3">
-          ← 一覧に戻る
-        </button>
+        <TopNav onBack={() => setStep("list")} />
         <h1 className="text-lg font-semibold text-ink mb-4">予約したイベント</h1>
         {mineLoading ? (
           <p className="text-ink-sub text-sm">読み込み中…</p>
@@ -265,7 +266,7 @@ export default function ReservePage() {
                   <button
                     onClick={() => cancelReservation(r.id)}
                     disabled={cancelingId === r.id}
-                    className="mt-3 text-xs text-org-text underline disabled:opacity-50"
+                    className="mt-3 inline-flex items-center rounded-full border border-org px-3 py-1.5 text-xs font-medium text-org-text disabled:opacity-50"
                   >
                     {cancelingId === r.id ? "処理中…" : "この予約をキャンセルする"}
                   </button>
@@ -284,9 +285,7 @@ export default function ReservePage() {
 
     return (
       <Shell>
-        <button onClick={() => setStep("list")} className="text-ink-hint text-xs mb-3">
-          ← 一覧に戻る
-        </button>
+        <TopNav onBack={() => setStep("list")} onMine={loadMine} />
         <h1 className="text-lg font-semibold text-ink mb-1">{selectedEvent.title}</h1>
         {selectedEvent.description && (
           <p className="text-ink-sub text-sm mb-4 whitespace-pre-wrap">{selectedEvent.description}</p>
@@ -376,12 +375,8 @@ export default function ReservePage() {
 
   return (
     <Shell>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-lg font-semibold text-ink">開催予定のイベント</h1>
-        <button onClick={loadMine} className="text-org-text text-xs underline underline-offset-2 shrink-0">
-          予約の確認・キャンセル
-        </button>
-      </div>
+      <TopNav onMine={loadMine} />
+      <h1 className="text-lg font-semibold text-ink mb-4">開催予定のイベント</h1>
       {events.length === 0 ? (
         <p className="text-ink-sub text-sm">現在予約可能なイベントはありません。</p>
       ) : (
@@ -417,4 +412,29 @@ export default function ReservePage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="min-h-screen bg-gray-bg px-4 py-5 max-w-md mx-auto">{children}</main>;
+}
+
+function TopNav({ onBack, onMine }: { onBack?: () => void; onMine?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 mb-4">
+      {onBack ? (
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 rounded-full border border-gray-line bg-white px-3 py-1.5 text-xs font-medium text-ink shadow-s"
+        >
+          ← 一覧に戻る
+        </button>
+      ) : (
+        <span />
+      )}
+      {onMine && (
+        <button
+          onClick={onMine}
+          className="inline-flex items-center gap-1 rounded-full border border-org bg-white px-3 py-1.5 text-xs font-medium text-org-text shadow-s"
+        >
+          予約の確認・キャンセルはこちら
+        </button>
+      )}
+    </div>
+  );
 }
