@@ -12,7 +12,9 @@ export async function GET(req: Request) {
   const supabase = supabaseAdmin();
   const { data, error } = await supabase
     .from("events")
-    .select("id, title, status, location, created_at, slots ( id, starts_at, capacity, reserved_count )")
+    .select(
+      "id, title, description, image_url, location, status, created_at, slots ( id, starts_at, capacity, reserved_count )"
+    )
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
