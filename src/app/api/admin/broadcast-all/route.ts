@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getPublishedUpcomingEvents } from "@/lib/events";
 import { broadcastEventsCarousel } from "@/lib/line";
 
 function checkAuth(req: Request) {
@@ -10,27 +10,7 @@ function checkAuth(req: Request) {
 export async function POST(req: Request) {
   if (!checkAuth(req)) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
-  const supabase = supabaseAdmin();
-  const { data: events, error } = await supabase
-    .from("events")
-    .select("id, title, description, image_url, location, status, slots ( starts_at )")
-    .eq("status", "published");
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const now = Date.now();
-  const upcoming = (events ?? [])
-    .map((e) => {
-      const next = (e.slots ?? [])
-        .map((s) => new Date(s.starts_at))
-        .filter((d) => d.getTime() > now)
-        .sort((a, b) => a.getTime() - b.getTime())[0];
-      return next
-        ? { id: e.id, title: e.title, description: e.description, imageUrl: e.image_url, location: e.location, startsAt: next }
-        : null;
-    })
-    .filter((e): e is NonNullable<typeof e> => e !== null)
-    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const upcoming = await getPublishedUpcomingEvents();
 
   if (upcoming.length === 0) {
     return NextResponse.json({ error: "NO_UPCOMING_EVENTS" }, { status: 400 });

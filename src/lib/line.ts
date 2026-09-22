@@ -1,4 +1,5 @@
 import { messagingApi } from "@line/bot-sdk";
+import type { UpcomingEvent } from "@/lib/events";
 
 const { MessagingApiClient } = messagingApi;
 
@@ -10,18 +11,7 @@ export function lineClient() {
   return new MessagingApiClient({ channelAccessToken });
 }
 
-export async function broadcastEventsCarousel(
-  events: {
-    id: string;
-    title: string;
-    description: string | null;
-    imageUrl: string | null;
-    location: string | null;
-    startsAt: Date;
-  }[]
-) {
-  const client = lineClient();
-
+export function buildEventsCarouselMessage(events: UpcomingEvent[]) {
   const bubbles = events.slice(0, 12).map((event) => {
     const dateLabel = new Intl.DateTimeFormat("ja-JP", {
       timeZone: "Asia/Tokyo",
@@ -88,15 +78,26 @@ export async function broadcastEventsCarousel(
     };
   });
 
-  await client.broadcast({
-    messages: [
-      {
-        type: "flex",
-        altText: "開催予定のイベント情報",
-        contents: { type: "carousel", contents: bubbles },
-      },
-    ],
-  });
+  return {
+    type: "flex" as const,
+    altText: "開催予定のイベント情報",
+    contents: { type: "carousel" as const, contents: bubbles },
+  };
+}
+
+export async function broadcastEventsCarousel(events: UpcomingEvent[]) {
+  const client = lineClient();
+  await client.broadcast({ messages: [buildEventsCarouselMessage(events)] });
+}
+
+export async function replyEventsCarousel(replyToken: string, events: UpcomingEvent[]) {
+  const client = lineClient();
+  await client.replyMessage({ replyToken, messages: [buildEventsCarouselMessage(events)] });
+}
+
+export async function replyText(replyToken: string, text: string) {
+  const client = lineClient();
+  await client.replyMessage({ replyToken, messages: [{ type: "text", text }] });
 }
 
 export async function pushReservationConfirmed(params: {
