@@ -77,8 +77,19 @@ export default function ReservePage() {
         const res = await fetch("/api/events");
         if (!res.ok) throw new Error("FETCH_FAILED");
         const data = await res.json();
-        setEvents(data.events ?? []);
-        setStep("list");
+        const list: EventItem[] = data.events ?? [];
+        setEvents(list);
+
+        const params = new URLSearchParams(window.location.search);
+        const targetId = params.get("event");
+        const target = targetId ? list.find((e) => e.id === targetId) : null;
+        if (target) {
+          setSelectedEvent(target);
+          setSelectedSlotId(target.slots[0]?.id ?? null);
+          setStep("detail");
+        } else {
+          setStep("list");
+        }
       } catch (e) {
         setErrorMessage(e instanceof Error ? e.message : "UNKNOWN");
         setStep("error");
@@ -212,7 +223,7 @@ export default function ReservePage() {
               イベント一覧に戻る
             </button>
             <button onClick={loadMine} className="text-ink-hint text-xs underline">
-              予約一覧を見る
+              予約の確認・キャンセルはこちら
             </button>
           </div>
         </div>
@@ -367,42 +378,37 @@ export default function ReservePage() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-lg font-semibold text-ink">開催予定のイベント</h1>
         <button onClick={loadMine} className="text-org-text text-xs underline underline-offset-2 shrink-0">
-          予約一覧
+          予約の確認・キャンセル
         </button>
       </div>
       {events.length === 0 ? (
         <p className="text-ink-sub text-sm">現在予約可能なイベントはありません。</p>
       ) : (
-        <>
-          <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory -mx-4 px-4 pb-2">
-            {events.map((event) => (
-              <button
-                key={event.id}
-                onClick={() => openEvent(event)}
-                className="text-left rounded-xl border border-gray-line overflow-hidden bg-white shadow-s snap-start shrink-0 w-[78%]"
-              >
-                {event.image_url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={event.image_url}
-                    alt={event.title}
-                    className="w-full h-40 object-contain bg-org-pale"
-                  />
-                )}
-                <div className="p-4">
-                  <div className="font-medium text-ink text-sm mb-1">{event.title}</div>
-                  <div className="text-ink-hint text-xs">
-                    {event.slots.length > 0 && formatSlot(event.slots[0].starts_at)}
-                    {event.slots.length > 1 && ` 他${event.slots.length - 1}枠`}
-                  </div>
+        <div className="flex flex-col gap-3">
+          {events.map((event) => (
+            <button
+              key={event.id}
+              onClick={() => openEvent(event)}
+              className="text-left rounded-xl border border-gray-line overflow-hidden bg-white shadow-s"
+            >
+              {event.image_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={event.image_url}
+                  alt={event.title}
+                  className="w-full h-40 object-contain bg-org-pale"
+                />
+              )}
+              <div className="p-4">
+                <div className="font-medium text-ink text-sm mb-1">{event.title}</div>
+                <div className="text-ink-hint text-xs">
+                  {event.slots.length > 0 && formatSlot(event.slots[0].starts_at)}
+                  {event.slots.length > 1 && ` 他${event.slots.length - 1}枠`}
                 </div>
-              </button>
-            ))}
-          </div>
-          {events.length > 1 && (
-            <p className="text-ink-hint text-xs mt-2">← 左右にスワイプして他のイベントも見られます →</p>
-          )}
-        </>
+              </div>
+            </button>
+          ))}
+        </div>
       )}
     </Shell>
   );

@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [broadcastingId, setBroadcastingId] = useState<string | null>(null);
+  const [broadcastingAll, setBroadcastingAll] = useState(false);
 
   async function loadEvents(pw: string) {
     setLoading(true);
@@ -194,6 +195,28 @@ export default function AdminPage() {
     }
   }
 
+  async function handleBroadcastAll() {
+    const ok = window.confirm(
+      "公開中の開催予定イベントをまとめて、カルーセル形式で友だち全員に配信します。よろしいですか？（取り消せません）"
+    );
+    if (!ok) return;
+    setBroadcastingAll(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/broadcast-all", {
+        method: "POST",
+        headers: { "x-admin-password": password },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error === "NO_UPCOMING_EVENTS" ? "配信できる開催予定のイベントがありません" : "配信に失敗しました");
+        return;
+      }
+    } finally {
+      setBroadcastingAll(false);
+    }
+  }
+
   if (!authed) {
     return (
       <main className="min-h-screen bg-org-pale flex items-center justify-center px-4">
@@ -343,7 +366,16 @@ export default function AdminPage() {
         </section>
 
         <section>
-          <h2 className="text-sm font-semibold text-ink mb-3">登録済みイベント</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-ink">登録済みイベント</h2>
+            <button
+              onClick={handleBroadcastAll}
+              disabled={broadcastingAll}
+              className="text-xs text-org-text underline underline-offset-2 disabled:opacity-50"
+            >
+              {broadcastingAll ? "配信中…" : "公開中のイベントをまとめて配信"}
+            </button>
+          </div>
           <div className="flex flex-col gap-3">
             {events.map((ev) => (
               <div key={ev.id} className="bg-white rounded-xl shadow-s p-4">
