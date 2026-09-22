@@ -38,7 +38,6 @@ export default function AdminPage() {
   const [capacity, setCapacity] = useState(10);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [broadcastingId, setBroadcastingId] = useState<string | null>(null);
   const [broadcastingAll, setBroadcastingAll] = useState(false);
 
   async function loadEvents(pw: string) {
@@ -171,27 +170,6 @@ export default function AdminPage() {
       await loadEvents(password);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleBroadcast(ev: EventRow) {
-    const ok = window.confirm(
-      `「${ev.title}」を友だち全員に配信します。よろしいですか？（取り消せません）`
-    );
-    if (!ok) return;
-    setBroadcastingId(ev.id);
-    setError("");
-    try {
-      const res = await fetch(`/api/admin/events/${ev.id}/broadcast`, {
-        method: "POST",
-        headers: { "x-admin-password": password },
-      });
-      if (!res.ok) {
-        setError("配信に失敗しました");
-        return;
-      }
-    } finally {
-      setBroadcastingId(null);
     }
   }
 
@@ -371,9 +349,9 @@ export default function AdminPage() {
             <button
               onClick={handleBroadcastAll}
               disabled={broadcastingAll}
-              className="text-xs text-org-text underline underline-offset-2 disabled:opacity-50"
+              className="rounded-lg bg-org text-white text-xs font-medium px-3 py-1.5 shadow-org disabled:opacity-50"
             >
-              {broadcastingAll ? "配信中…" : "公開中のイベントをまとめて配信"}
+              {broadcastingAll ? "配信中…" : "友だちに配信する（公開中の全イベント）"}
             </button>
           </div>
           <div className="flex flex-col gap-3">
@@ -390,13 +368,7 @@ export default function AdminPage() {
                       {ev.status === "published" ? "公開中" : "下書き"}
                     </span>
                     {ev.status === "published" && (
-                      <button
-                        onClick={() => handleBroadcast(ev)}
-                        disabled={broadcastingId === ev.id}
-                        className="text-xs text-org-text underline underline-offset-2 disabled:opacity-50"
-                      >
-                        {broadcastingId === ev.id ? "配信中…" : "友だちに配信する"}
-                      </button>
+                      <span className="text-xs text-ink-hint">配信は下の一括ボタンから</span>
                     )}
                     <button
                       onClick={() => startEdit(ev)}
