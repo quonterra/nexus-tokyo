@@ -277,7 +277,11 @@ export default function ReservePage() {
             >
               {event.image_url && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={event.image_url} alt={event.title} className="w-full h-32 object-cover" />
+                <img
+                  src={event.image_url}
+                  alt={event.title}
+                  className="w-full h-40 object-contain bg-org-pale"
+                />
               )}
               <div className="p-4">
                 <div className="font-medium text-ink text-sm mb-1">{event.title}</div>

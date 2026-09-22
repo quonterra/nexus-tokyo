@@ -40,7 +40,8 @@ export async function broadcastEventAnnouncement(params: {
                 url: params.imageUrl,
                 size: "full",
                 aspectRatio: "20:13",
-                aspectMode: "cover",
+                aspectMode: "fit",
+                backgroundColor: "#FFF3EC",
               }
             : undefined,
           body: {
