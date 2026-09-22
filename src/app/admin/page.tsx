@@ -24,6 +24,7 @@ export default function AdminPage() {
   const [status, setStatus] = useState<"draft" | "published">("draft");
   const [slotDate, setSlotDate] = useState("");
   const [capacity, setCapacity] = useState(10);
+  const [uploading, setUploading] = useState(false);
 
   async function loadEvents(pw: string) {
     setLoading(true);
@@ -52,6 +53,30 @@ export default function AdminPage() {
   async function handleLogin() {
     sessionStorage.setItem("nexus_admin_pw", password);
     await loadEvents(password);
+  }
+
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: { "x-admin-password": password },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError("画像のアップロードに失敗しました");
+        return;
+      }
+      setImageUrl(data.url);
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleCreate() {
@@ -131,12 +156,21 @@ export default function AdminPage() {
             rows={3}
             className="rounded-lg border border-gray-line px-3 py-2 text-sm"
           />
-          <input
-            placeholder="画像URL（任意）"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            className="rounded-lg border border-gray-line px-3 py-2 text-sm"
-          />
+          <div>
+            <label className="text-xs text-ink-sub mb-1 block">フライヤー画像（任意）</label>
+            {imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={imageUrl} alt="" className="w-full max-h-48 object-cover rounded-lg mb-2" />
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              disabled={uploading}
+              className="text-sm"
+            />
+            {uploading && <p className="text-ink-hint text-xs mt-1">アップロード中…</p>}
+          </div>
           <input
             placeholder="会場（任意）"
             value={location}
