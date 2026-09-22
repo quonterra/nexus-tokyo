@@ -7,14 +7,23 @@ import { replyEventsCarousel, replyText } from "@/lib/line";
 export const runtime = "nodejs";
 
 function isValidSignature(rawBody: string, signature: string | null): boolean {
-  const channelSecret = process.env.LINE_CHANNEL_SECRET;
-  if (!channelSecret || !signature) return false;
+  const channelSecret = process.env.LINE_CHANNEL_SECRET?.trim();
+  const trimmedSignature = signature?.trim();
+  if (!channelSecret || !trimmedSignature) return false;
 
   const expected = createHmac("sha256", channelSecret).update(rawBody).digest("base64");
   const expectedBuf = Buffer.from(expected);
-  const signatureBuf = Buffer.from(signature);
-  if (expectedBuf.length !== signatureBuf.length) return false;
-  return timingSafeEqual(expectedBuf, signatureBuf);
+  const signatureBuf = Buffer.from(trimmedSignature);
+  if (expectedBuf.length !== signatureBuf.length) {
+    console.error("LINE webhook signature length mismatch", {
+      expectedLen: expectedBuf.length,
+      gotLen: signatureBuf.length,
+    });
+    return false;
+  }
+  const ok = timingSafeEqual(expectedBuf, signatureBuf);
+  if (!ok) console.error("LINE webhook signature mismatch (secret likely incorrect)");
+  return ok;
 }
 
 const EVENT_INFO_TRIGGER_TEXT = "イベント情報";
