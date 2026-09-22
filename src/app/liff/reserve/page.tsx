@@ -28,7 +28,16 @@ type EventItem = {
   event_questions: Question[];
 };
 
-type Step = "loading" | "list" | "detail" | "done" | "error";
+type MyReservation = {
+  id: string;
+  status: string;
+  eventTitle: string;
+  location: string | null;
+  imageUrl: string | null;
+  startsAt: string | null;
+};
+
+type Step = "loading" | "list" | "detail" | "done" | "error" | "mine";
 
 function formatSlot(iso: string) {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -48,6 +57,10 @@ export default function ReservePage() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const [myReservations, setMyReservations] = useState<MyReservation[]>([]);
+  const [mineLoading, setMineLoading] = useState(false);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -77,6 +90,7 @@ export default function ReservePage() {
     setSelectedEvent(event);
     setSelectedSlotId(event.slots[0]?.id ?? null);
     setAnswers({});
+    setErrorMessage("");
     setStep("detail");
   }
 
@@ -109,9 +123,10 @@ export default function ReservePage() {
         const message =
           data.error === "SLOT_FULL"
             ? "この回はちょうど満席になりました。別の回をお選びください。"
-            : "予約に失敗しました。時間をおいて再度お試しください。";
+            : data.error === "ALREADY_RESERVED"
+              ? "このイベントはすでに予約済みです。予約一覧からご確認ください。"
+              : "予約に失敗しました。時間をおいて再度お試しください。";
         setErrorMessage(message);
-        setStep("detail");
         return;
       }
       setStep("done");
@@ -119,6 +134,43 @@ export default function ReservePage() {
       setErrorMessage("通信エラーが発生しました。もう一度お試しください。");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function loadMine() {
+    setStep("mine");
+    setMineLoading(true);
+    try {
+      const liffAccessToken = liff.getAccessToken();
+      const res = await fetch("/api/reservations/mine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ liffAccessToken }),
+      });
+      const data = await res.json();
+      setMyReservations(res.ok ? (data.reservations ?? []) : []);
+    } finally {
+      setMineLoading(false);
+    }
+  }
+
+  async function cancelReservation(id: string) {
+    if (!window.confirm("この予約をキャンセルしますか？")) return;
+    setCancelingId(id);
+    try {
+      const liffAccessToken = liff.getAccessToken();
+      const res = await fetch(`/api/reservations/${id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ liffAccessToken }),
+      });
+      if (res.ok) {
+        setMyReservations((list) =>
+          list.map((r) => (r.id === id ? { ...r, status: "cancelled" } : r))
+        );
+      }
+    } finally {
+      setCancelingId(null);
     }
   }
 
@@ -149,16 +201,67 @@ export default function ReservePage() {
           <p className="text-ink-sub text-sm mb-6">
             LINEに確認メッセージを送信しました。当日を楽しみにお待ちください。
           </p>
-          <button
-            onClick={() => {
-              setStep("list");
-              setSelectedEvent(null);
-            }}
-            className="text-org text-sm font-medium underline"
-          >
-            イベント一覧に戻る
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => {
+                setStep("list");
+                setSelectedEvent(null);
+              }}
+              className="text-org text-sm font-medium underline"
+            >
+              イベント一覧に戻る
+            </button>
+            <button onClick={loadMine} className="text-ink-hint text-xs underline">
+              予約一覧を見る
+            </button>
+          </div>
         </div>
+      </Shell>
+    );
+  }
+
+  if (step === "mine") {
+    return (
+      <Shell>
+        <button onClick={() => setStep("list")} className="text-ink-hint text-xs mb-3">
+          ← 一覧に戻る
+        </button>
+        <h1 className="text-lg font-semibold text-ink mb-4">予約したイベント</h1>
+        {mineLoading ? (
+          <p className="text-ink-sub text-sm">読み込み中…</p>
+        ) : myReservations.length === 0 ? (
+          <p className="text-ink-sub text-sm">まだ予約はありません。</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {myReservations.map((r) => (
+              <div key={r.id} className="rounded-xl border border-gray-line bg-white p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-medium text-ink text-sm mb-1">{r.eventTitle}</div>
+                    {r.startsAt && <div className="text-ink-hint text-xs">{formatSlot(r.startsAt)}</div>}
+                    {r.location && <div className="text-ink-hint text-xs">{r.location}</div>}
+                  </div>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                      r.status === "cancelled" ? "bg-gray-bg text-ink-hint" : "bg-org-pale text-org-text"
+                    }`}
+                  >
+                    {r.status === "cancelled" ? "キャンセル済み" : "予約確定"}
+                  </span>
+                </div>
+                {r.status !== "cancelled" && (
+                  <button
+                    onClick={() => cancelReservation(r.id)}
+                    disabled={cancelingId === r.id}
+                    className="mt-3 text-xs text-org-text underline disabled:opacity-50"
+                  >
+                    {cancelingId === r.id ? "処理中…" : "この予約をキャンセルする"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </Shell>
     );
   }
@@ -169,10 +272,7 @@ export default function ReservePage() {
 
     return (
       <Shell>
-        <button
-          onClick={() => setStep("list")}
-          className="text-ink-hint text-xs mb-3"
-        >
+        <button onClick={() => setStep("list")} className="text-ink-hint text-xs mb-3">
           ← 一覧に戻る
         </button>
         <h1 className="text-lg font-semibold text-ink mb-1">{selectedEvent.title}</h1>
@@ -264,35 +364,45 @@ export default function ReservePage() {
 
   return (
     <Shell>
-      <h1 className="text-lg font-semibold text-ink mb-4">開催予定のイベント</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-lg font-semibold text-ink">開催予定のイベント</h1>
+        <button onClick={loadMine} className="text-org-text text-xs underline underline-offset-2 shrink-0">
+          予約一覧
+        </button>
+      </div>
       {events.length === 0 ? (
         <p className="text-ink-sub text-sm">現在予約可能なイベントはありません。</p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {events.map((event) => (
-            <button
-              key={event.id}
-              onClick={() => openEvent(event)}
-              className="text-left rounded-xl border border-gray-line overflow-hidden bg-white shadow-s"
-            >
-              {event.image_url && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={event.image_url}
-                  alt={event.title}
-                  className="w-full h-40 object-contain bg-org-pale"
-                />
-              )}
-              <div className="p-4">
-                <div className="font-medium text-ink text-sm mb-1">{event.title}</div>
-                <div className="text-ink-hint text-xs">
-                  {event.slots.length > 0 && formatSlot(event.slots[0].starts_at)}
-                  {event.slots.length > 1 && ` 他${event.slots.length - 1}枠`}
+        <>
+          <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory -mx-4 px-4 pb-2">
+            {events.map((event) => (
+              <button
+                key={event.id}
+                onClick={() => openEvent(event)}
+                className="text-left rounded-xl border border-gray-line overflow-hidden bg-white shadow-s snap-start shrink-0 w-[78%]"
+              >
+                {event.image_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={event.image_url}
+                    alt={event.title}
+                    className="w-full h-40 object-contain bg-org-pale"
+                  />
+                )}
+                <div className="p-4">
+                  <div className="font-medium text-ink text-sm mb-1">{event.title}</div>
+                  <div className="text-ink-hint text-xs">
+                    {event.slots.length > 0 && formatSlot(event.slots[0].starts_at)}
+                    {event.slots.length > 1 && ` 他${event.slots.length - 1}枠`}
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+          {events.length > 1 && (
+            <p className="text-ink-hint text-xs mt-2">← 左右にスワイプして他のイベントも見られます →</p>
+          )}
+        </>
       )}
     </Shell>
   );

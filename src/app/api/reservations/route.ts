@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { pushReservationConfirmed } from "@/lib/line";
-
-async function verifyLiffProfile(liffAccessToken: string) {
-  const res = await fetch("https://api.line.me/v2/profile", {
-    headers: { Authorization: `Bearer ${liffAccessToken}` },
-  });
-  if (!res.ok) return null;
-  return (await res.json()) as { userId: string; displayName: string; pictureUrl?: string };
-}
+import { verifyLiffProfile } from "@/lib/liff-auth";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -43,9 +36,11 @@ export async function POST(req: Request) {
   if (error) {
     const code = error.message.includes("SLOT_FULL")
       ? "SLOT_FULL"
-      : error.message.includes("SLOT_NOT_FOUND")
-        ? "SLOT_NOT_FOUND"
-        : "UNKNOWN";
+      : error.message.includes("ALREADY_RESERVED")
+        ? "ALREADY_RESERVED"
+        : error.message.includes("SLOT_NOT_FOUND")
+          ? "SLOT_NOT_FOUND"
+          : "UNKNOWN";
     const status = code === "UNKNOWN" ? 500 : 409;
     return NextResponse.json({ error: code }, { status });
   }
