@@ -100,6 +100,63 @@ export async function replyText(replyToken: string, text: string) {
   await client.replyMessage({ replyToken, messages: [{ type: "text", text }] });
 }
 
+export async function pushReservationReminder(params: {
+  lineUserId: string;
+  eventTitle: string;
+  startsAt: Date;
+  location: string | null;
+}) {
+  const client = lineClient();
+  const dateLabel = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(params.startsAt);
+
+  await client.pushMessage({
+    to: params.lineUserId,
+    messages: [
+      {
+        type: "flex",
+        altText: `明日開催です：${params.eventTitle}`,
+        contents: {
+          type: "bubble",
+          header: {
+            type: "box",
+            layout: "vertical",
+            backgroundColor: "#FF6600",
+            paddingAll: "16px",
+            contents: [
+              {
+                type: "text",
+                text: "明日開催です",
+                color: "#FFFFFF",
+                weight: "bold",
+                size: "md",
+              },
+            ],
+          },
+          body: {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: [
+              { type: "text", text: params.eventTitle, weight: "bold", size: "lg", wrap: true },
+              { type: "text", text: dateLabel, size: "sm", color: "#555555" },
+              ...(params.location
+                ? [{ type: "text", text: params.location, size: "sm", color: "#555555", wrap: true } as const]
+                : []),
+            ],
+          },
+        },
+      },
+    ],
+  });
+}
+
 export async function pushReservationConfirmed(params: {
   lineUserId: string;
   eventTitle: string;
