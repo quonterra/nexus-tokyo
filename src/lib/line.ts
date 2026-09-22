@@ -14,6 +14,7 @@ export async function broadcastEventsCarousel(
   events: {
     id: string;
     title: string;
+    description: string | null;
     imageUrl: string | null;
     location: string | null;
     startsAt: Date;
@@ -23,6 +24,7 @@ export async function broadcastEventsCarousel(
 
   const bubbles = events.slice(0, 12).map((event) => {
     const dateLabel = new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
       month: "long",
       day: "numeric",
       weekday: "short",
@@ -51,6 +53,19 @@ export async function broadcastEventsCarousel(
           { type: "text" as const, text: dateLabel, size: "sm" as const, color: "#555555" },
           ...(event.location
             ? [{ type: "text" as const, text: event.location, size: "sm" as const, color: "#555555", wrap: true }]
+            : []),
+          ...(event.description
+            ? [
+                {
+                  type: "text" as const,
+                  text: event.description,
+                  size: "xs" as const,
+                  color: "#333333",
+                  wrap: true,
+                  margin: "md" as const,
+                  maxLines: 5,
+                },
+              ]
             : []),
         ],
       },
@@ -92,6 +107,7 @@ export async function pushReservationConfirmed(params: {
 }) {
   const client = lineClient();
   const dateLabel = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "long",
     day: "numeric",
     weekday: "short",

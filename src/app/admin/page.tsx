@@ -383,6 +383,7 @@ export default function AdminPage() {
                   {ev.slots.map((s) => (
                     <div key={s.id} className="text-xs text-ink-sub">
                       {new Intl.DateTimeFormat("ja-JP", {
+                        timeZone: "Asia/Tokyo",
                         month: "long",
                         day: "numeric",
                         weekday: "short",

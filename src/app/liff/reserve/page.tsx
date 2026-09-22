@@ -41,6 +41,7 @@ type Step = "loading" | "list" | "detail" | "done" | "error" | "mine";
 
 function formatSlot(iso: string) {
   return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "long",
     day: "numeric",
     weekday: "short",
