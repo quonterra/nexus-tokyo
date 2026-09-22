@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@line/bot-sdk": "^11.2.0",
+    "@line/liff": "^2.31.0",
+    "@supabase/supabase-js": "^2.116.0",
     "next": "16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3"
