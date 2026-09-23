@@ -57,6 +57,8 @@ export default function ReservePage() {
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [attendeeName, setAttendeeName] = useState("");
+  const [lineDisplayName, setLineDisplayName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const [myReservations, setMyReservations] = useState<MyReservation[]>([]);
@@ -81,6 +83,13 @@ export default function ReservePage() {
         const list: EventItem[] = data.events ?? [];
         setEvents(list);
 
+        try {
+          const profile = await liff.getProfile();
+          setLineDisplayName(profile.displayName ?? "");
+        } catch {
+          // プロフィール取得に失敗しても予約フロー自体は継続する
+        }
+
         const params = new URLSearchParams(window.location.search);
         const targetId = params.get("event");
         const target = targetId ? list.find((e) => e.id === targetId) : null;
@@ -102,12 +111,18 @@ export default function ReservePage() {
     setSelectedEvent(event);
     setSelectedSlotId(event.slots[0]?.id ?? null);
     setAnswers({});
+    setAttendeeName(lineDisplayName);
     setErrorMessage("");
     setStep("detail");
   }
 
   async function submitReservation() {
     if (!selectedEvent || !selectedSlotId) return;
+
+    if (!attendeeName.trim()) {
+      setErrorMessage("お名前を入力してください");
+      return;
+    }
 
     const missing = selectedEvent.event_questions.find((q) => q.required && !answers[q.id]?.trim());
     if (missing) {
@@ -125,6 +140,7 @@ export default function ReservePage() {
         body: JSON.stringify({
           liffAccessToken,
           slotId: selectedSlotId,
+          attendeeName: attendeeName.trim(),
           answers: Object.fromEntries(
             selectedEvent.event_questions.map((q) => [q.label, answers[q.id] ?? ""])
           ),
@@ -290,6 +306,21 @@ export default function ReservePage() {
         {selectedEvent.description && (
           <p className="text-ink-sub text-sm mb-4 whitespace-pre-wrap">{selectedEvent.description}</p>
         )}
+
+        <div className="mb-5">
+          <label className="text-xs font-medium text-ink-sub mb-1 block">
+            お名前<span className="text-org ml-1">*</span>
+          </label>
+          <input
+            value={attendeeName}
+            onChange={(e) => setAttendeeName(e.target.value)}
+            placeholder="例：山田 太郎"
+            className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
+          />
+          <p className="text-ink-hint text-[11px] mt-1">
+            LINEの表示名と異なる場合も、こちらに本名などご確認しやすいお名前をご入力ください。
+          </p>
+        </div>
 
         <div className="mb-5">
           <p className="text-xs font-medium text-ink-sub mb-2">日時を選択</p>

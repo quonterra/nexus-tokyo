@@ -5,13 +5,14 @@ import { verifyLiffProfile } from "@/lib/liff-auth";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { liffAccessToken, slotId, answers } = body as {
+  const { liffAccessToken, slotId, answers, attendeeName } = body as {
     liffAccessToken?: string;
     slotId?: string;
     answers?: Record<string, string>;
+    attendeeName?: string;
   };
 
-  if (!liffAccessToken || !slotId) {
+  if (!liffAccessToken || !slotId || !attendeeName?.trim()) {
     return NextResponse.json({ error: "INVALID_REQUEST" }, { status: 400 });
   }
 
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
       p_display_name: profile.displayName,
       p_picture_url: profile.pictureUrl ?? null,
       p_answers: answers ?? {},
+      p_attendee_name: attendeeName.trim(),
     })
     .single();
 

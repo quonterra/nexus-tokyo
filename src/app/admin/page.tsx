@@ -31,6 +31,7 @@ type AttendeeRow = {
   id: string;
   status: string;
   answers: Record<string, string>;
+  attendeeName: string | null;
   createdAt: string;
   slotStartsAt: string | null;
   displayName: string;
@@ -585,7 +586,12 @@ export default function AdminPage() {
                       attendees[ev.id].map((a) => (
                         <div key={a.id} className="rounded-lg bg-gray-bg px-3 py-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-ink">{a.displayName}</span>
+                            <span className="text-xs font-medium text-ink">
+                              {a.attendeeName || "(未入力)"}
+                              <span className="text-ink-hint font-normal ml-1.5">
+                                （LINE：{a.displayName}）
+                              </span>
+                            </span>
                             <span
                               className={`text-[10px] px-2 py-0.5 rounded-full ${
                                 a.status === "cancelled"

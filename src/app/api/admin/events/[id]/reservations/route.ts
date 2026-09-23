@@ -15,7 +15,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { data, error } = await supabase
     .from("reservations")
     .select(
-      "id, status, answers, created_at, slots ( starts_at ), line_users ( display_name, picture_url )"
+      "id, status, answers, attendee_name, created_at, slots ( starts_at ), line_users ( display_name, picture_url )"
     )
     .eq("event_id", id)
     .order("created_at", { ascending: true });
@@ -29,6 +29,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       id: r.id,
       status: r.status,
       answers: r.answers as Record<string, string>,
+      attendeeName: r.attendee_name as string | null,
       createdAt: r.created_at,
       slotStartsAt: slot?.starts_at ?? null,
       displayName: lineUser?.display_name ?? "(不明)",
