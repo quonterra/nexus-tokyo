@@ -27,6 +27,15 @@ type QuestionDraft = {
   options: string;
   required: boolean;
 };
+type AttendeeRow = {
+  id: string;
+  status: string;
+  answers: Record<string, string>;
+  createdAt: string;
+  slotStartsAt: string | null;
+  displayName: string;
+  pictureUrl: string | null;
+};
 
 function toDatetimeLocal(iso: string) {
   const d = new Date(iso);
@@ -55,6 +64,9 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [broadcastingAll, setBroadcastingAll] = useState(false);
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [attendees, setAttendees] = useState<Record<string, AttendeeRow[]>>({});
+  const [attendeesLoading, setAttendeesLoading] = useState<string | null>(null);
 
   async function loadEvents(pw: string) {
     setLoading(true);
@@ -248,6 +260,26 @@ export default function AdminPage() {
       }
     } finally {
       setBroadcastingAll(false);
+    }
+  }
+
+  async function toggleAttendees(eventId: string) {
+    if (expandedEventId === eventId) {
+      setExpandedEventId(null);
+      return;
+    }
+    setExpandedEventId(eventId);
+    if (attendees[eventId]) return;
+
+    setAttendeesLoading(eventId);
+    try {
+      const res = await fetch(`/api/admin/events/${eventId}/reservations`, {
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json();
+      setAttendees((a) => ({ ...a, [eventId]: res.ok ? (data.reservations ?? []) : [] }));
+    } finally {
+      setAttendeesLoading(null);
     }
   }
 
@@ -537,6 +569,60 @@ export default function AdminPage() {
                     </div>
                   ))}
                 </div>
+                <button
+                  onClick={() => toggleAttendees(ev.id)}
+                  className="mt-2 text-xs text-org-text underline underline-offset-2"
+                >
+                  {expandedEventId === ev.id ? "予約者一覧を閉じる" : "予約者一覧を見る"}
+                </button>
+                {expandedEventId === ev.id && (
+                  <div className="mt-3 border-t border-gray-line pt-3 flex flex-col gap-2">
+                    {attendeesLoading === ev.id ? (
+                      <p className="text-ink-hint text-xs">読み込み中…</p>
+                    ) : (attendees[ev.id]?.length ?? 0) === 0 ? (
+                      <p className="text-ink-hint text-xs">まだ予約はありません。</p>
+                    ) : (
+                      attendees[ev.id].map((a) => (
+                        <div key={a.id} className="rounded-lg bg-gray-bg px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-ink">{a.displayName}</span>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                a.status === "cancelled"
+                                  ? "bg-white text-ink-hint"
+                                  : "bg-org-pale text-org-text"
+                              }`}
+                            >
+                              {a.status === "cancelled" ? "キャンセル済み" : "予約中"}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-ink-hint mt-0.5">
+                            {new Intl.DateTimeFormat("ja-JP", {
+                              timeZone: "Asia/Tokyo",
+                              month: "numeric",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }).format(new Date(a.createdAt))}
+                            に予約
+                          </div>
+                          {Object.entries(a.answers ?? {}).length > 0 && (
+                            <div className="mt-1.5 flex flex-col gap-0.5">
+                              {Object.entries(a.answers).map(([label, value]) =>
+                                value ? (
+                                  <div key={label} className="text-[11px] text-ink-sub">
+                                    <span className="text-ink-hint">{label}：</span>
+                                    {value}
+                                  </div>
+                                ) : null
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             {events.length === 0 && !loading && (
