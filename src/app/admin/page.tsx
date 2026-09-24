@@ -517,13 +517,21 @@ export default function AdminPage() {
               <span className="inline-block w-1 h-4 bg-org rounded-full" />
               登録済みイベント
             </h2>
-            <button
-              onClick={handleBroadcastAll}
-              disabled={broadcastingAll}
-              className="rounded-lg border border-org bg-white text-org-text text-xs font-medium px-3 py-1.5 hover:bg-org-pale transition disabled:opacity-50"
-            >
-              {broadcastingAll ? "配信中…" : "友だちに配信する（公開中の全イベント）"}
-            </button>
+            <div className="flex items-center gap-2">
+              <a
+                href={`/api/admin/export?password=${encodeURIComponent(password)}`}
+                className="rounded-lg border border-gray-line bg-white text-ink text-xs font-medium px-3 py-1.5 hover:bg-gray-bg transition"
+              >
+                予約者一覧をCSVダウンロード
+              </a>
+              <button
+                onClick={handleBroadcastAll}
+                disabled={broadcastingAll}
+                className="rounded-lg border border-org bg-white text-org-text text-xs font-medium px-3 py-1.5 hover:bg-org-pale transition disabled:opacity-50"
+              >
+                {broadcastingAll ? "配信中…" : "友だちに配信する（公開中の全イベント）"}
+              </button>
+            </div>
           </div>
           <div className="flex flex-col gap-3">
             {events.map((ev) => (

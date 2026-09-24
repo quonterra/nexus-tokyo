@@ -307,19 +307,27 @@ export default function ReservePage() {
           <p className="text-ink-sub text-sm mb-4 whitespace-pre-wrap">{selectedEvent.description}</p>
         )}
 
-        <div className="mb-5">
-          <label className="text-xs font-medium text-ink-sub mb-1 block">
-            お名前<span className="text-org ml-1">*</span>
-          </label>
-          <input
-            value={attendeeName}
-            onChange={(e) => setAttendeeName(e.target.value)}
-            placeholder="例：山田 太郎"
-            className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
-          />
-          <p className="text-ink-hint text-[11px] mt-1">
-            LINEの表示名と異なる場合も、こちらに本名などご確認しやすいお名前をご入力ください。
-          </p>
+        <div className="mb-5 flex flex-col gap-3">
+          <div>
+            <label className="text-xs font-medium text-ink-sub mb-1 block">LINEの表示名</label>
+            <div className="w-full rounded-lg border border-gray-line bg-gray-bg px-3 py-2 text-sm text-ink-hint">
+              {lineDisplayName || "取得できませんでした"}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-sub mb-1 block">
+              ご予約者名<span className="text-org ml-1">*</span>
+            </label>
+            <input
+              value={attendeeName}
+              onChange={(e) => setAttendeeName(e.target.value)}
+              placeholder="例：山田 太郎"
+              className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
+            />
+            <p className="text-ink-hint text-[11px] mt-1">
+              LINEの表示名と異なる場合も、確認しやすいお名前をご入力ください。
+            </p>
+          </div>
         </div>
 
         <div className="mb-5">
