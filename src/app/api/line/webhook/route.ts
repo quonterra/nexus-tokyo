@@ -2,7 +2,9 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import type { webhook } from "@line/bot-sdk";
 import { getPublishedUpcomingEvents } from "@/lib/events";
-import { replyEventsCarousel, replyText } from "@/lib/line";
+import { replyEventsCarousel, replyText, replyCoupon } from "@/lib/line";
+import { getOrIssueCoupon } from "@/lib/coupons";
+import { ensureLineUser } from "@/lib/line-users";
 
 export const runtime = "nodejs";
 
@@ -28,6 +30,8 @@ function isValidSignature(rawBody: string, signature: string | null): boolean {
 
 const EVENT_INFO_TRIGGER_TEXT = "イベント情報";
 const EVENT_INFO_POSTBACK_DATA = "action=show_events";
+const COUPON_TRIGGER_TEXT = "お得情報";
+const COUPON_POSTBACK_DATA = "action=show_coupon";
 
 async function replyWithEventsCarousel(replyToken: string) {
   const upcoming = await getPublishedUpcomingEvents();
@@ -36,6 +40,12 @@ async function replyWithEventsCarousel(replyToken: string) {
     return;
   }
   await replyEventsCarousel(replyToken, upcoming);
+}
+
+async function replyWithCoupon(replyToken: string, lineUserId: string) {
+  await ensureLineUser(lineUserId);
+  const coupon = await getOrIssueCoupon(lineUserId);
+  await replyCoupon(replyToken, coupon);
 }
 
 export async function POST(req: Request) {
@@ -51,16 +61,23 @@ export async function POST(req: Request) {
   await Promise.all(
     (body.events ?? []).map(async (event: webhook.Event) => {
       try {
+        const userId = event.source?.type === "user" ? event.source.userId : undefined;
+
         if (event.type === "postback" && event.replyToken) {
           if (event.postback.data === EVENT_INFO_POSTBACK_DATA) {
             await replyWithEventsCarousel(event.replyToken);
+          } else if (event.postback.data === COUPON_POSTBACK_DATA && userId) {
+            await replyWithCoupon(event.replyToken, userId);
           }
           return;
         }
 
         if (event.type === "message" && event.replyToken && event.message.type === "text") {
-          if (event.message.text.trim() === EVENT_INFO_TRIGGER_TEXT) {
+          const text = event.message.text.trim();
+          if (text === EVENT_INFO_TRIGGER_TEXT) {
             await replyWithEventsCarousel(event.replyToken);
+          } else if (text === COUPON_TRIGGER_TEXT && userId) {
+            await replyWithCoupon(event.replyToken, userId);
           }
           return;
         }

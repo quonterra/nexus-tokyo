@@ -69,6 +69,17 @@ export default function AdminPage() {
   const [attendees, setAttendees] = useState<Record<string, AttendeeRow[]>>({});
   const [attendeesLoading, setAttendeesLoading] = useState<string | null>(null);
 
+  const [couponCode, setCouponCode] = useState("");
+  const [couponResult, setCouponResult] = useState<{
+    code: string;
+    amount: number;
+    status: string;
+    displayName: string;
+  } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [redeeming, setRedeeming] = useState(false);
+
   async function loadEvents(pw: string) {
     setLoading(true);
     setError("");
@@ -281,6 +292,46 @@ export default function AdminPage() {
       setAttendees((a) => ({ ...a, [eventId]: res.ok ? (data.reservations ?? []) : [] }));
     } finally {
       setAttendeesLoading(null);
+    }
+  }
+
+  async function handleLookupCoupon() {
+    if (!couponCode.trim()) return;
+    setCouponError("");
+    setCouponResult(null);
+    setCouponLoading(true);
+    try {
+      const res = await fetch(`/api/admin/coupons/lookup?code=${encodeURIComponent(couponCode.trim())}`, {
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCouponError(data.error === "NOT_FOUND" ? "そのコードのクーポンは見つかりません" : "確認に失敗しました");
+        return;
+      }
+      setCouponResult(data.coupon);
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  async function handleRedeemCoupon() {
+    if (!couponResult) return;
+    setRedeeming(true);
+    setCouponError("");
+    try {
+      const res = await fetch("/api/admin/coupons/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ code: couponResult.code }),
+      });
+      if (!res.ok) {
+        setCouponError("使用済み処理に失敗しました");
+        return;
+      }
+      setCouponResult((c) => (c ? { ...c, status: "used" } : c));
+    } finally {
+      setRedeeming(false);
     }
   }
 
@@ -641,6 +692,60 @@ export default function AdminPage() {
             ))}
             {events.length === 0 && !loading && (
               <p className="text-ink-hint text-xs">まだイベントが登録されていません。</p>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+            <span className="inline-block w-1 h-4 bg-org rounded-full" />
+            クーポン確認・使用処理
+          </h2>
+          <div className="bg-white rounded-xl shadow-s p-4">
+            <div className="flex gap-2 mb-3">
+              <input
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && handleLookupCoupon()}
+                placeholder="クーポンコードを入力（例：AB23CD）"
+                className="flex-1 rounded-lg border border-gray-line px-3 py-2 text-sm tracking-widest"
+              />
+              <button
+                onClick={handleLookupCoupon}
+                disabled={couponLoading}
+                className="rounded-lg border border-gray-line bg-white text-ink text-sm font-medium px-4 disabled:opacity-50"
+              >
+                確認
+              </button>
+            </div>
+            {couponError && <p className="text-org-text text-xs mb-2">{couponError}</p>}
+            {couponResult && (
+              <div className="rounded-lg bg-gray-bg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-ink">{couponResult.amount}円クーポン</span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full ${
+                      couponResult.status === "used"
+                        ? "bg-white text-ink-hint"
+                        : "bg-org-pale text-org-text"
+                    }`}
+                  >
+                    {couponResult.status === "used" ? "使用済み" : "未使用"}
+                  </span>
+                </div>
+                <p className="text-ink-hint text-xs mb-3">
+                  {couponResult.displayName || "(不明)"}さん・コード {couponResult.code}
+                </p>
+                {couponResult.status === "issued" && (
+                  <button
+                    onClick={handleRedeemCoupon}
+                    disabled={redeeming}
+                    className="w-full rounded-lg bg-org text-white text-sm font-medium py-2 disabled:opacity-50"
+                  >
+                    {redeeming ? "処理中…" : "このクーポンを使用済みにする"}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </section>

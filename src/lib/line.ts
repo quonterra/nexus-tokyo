@@ -213,3 +213,74 @@ export async function pushReservationConfirmed(params: {
     ],
   });
 }
+
+export async function replyCoupon(
+  replyToken: string,
+  coupon: { code: string; amount: number; status: "issued" | "used" }
+) {
+  const client = lineClient();
+  const used = coupon.status === "used";
+
+  await client.replyMessage({
+    replyToken,
+    messages: [
+      {
+        type: "flex",
+        altText: used ? "クーポンは使用済みです" : `${coupon.amount}円クーポンを発行しました`,
+        contents: {
+          type: "bubble",
+          header: {
+            type: "box",
+            layout: "vertical",
+            backgroundColor: used ? "#9CA3AF" : "#FF6600",
+            paddingAll: "16px",
+            contents: [
+              {
+                type: "text",
+                text: "友だち追加特典",
+                color: "#FFFFFF",
+                weight: "bold",
+                size: "sm",
+              },
+            ],
+          },
+          body: {
+            type: "box",
+            layout: "vertical",
+            spacing: "md",
+            contents: [
+              {
+                type: "text",
+                text: `${coupon.amount}円クーポン`,
+                weight: "bold",
+                size: "xxl",
+                color: used ? "#9CA3AF" : "#1C1C1E",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                backgroundColor: "#FFF3EC",
+                cornerRadius: "8px",
+                paddingAll: "12px",
+                contents: [
+                  { type: "text", text: "クーポンコード", size: "xs", color: "#8A8A8E" },
+                  {
+                    type: "text",
+                    text: coupon.code,
+                    size: "xxl",
+                    weight: "bold",
+                    color: "#FF6600",
+                    align: "center",
+                  },
+                ],
+              },
+              used
+                ? { type: "text", text: "このクーポンはご利用済みです。またのご利用をお待ちしております。", size: "xs", color: "#8A8A8E", wrap: true }
+                : { type: "text", text: "会計時に、この画面をスタッフにご提示ください（お一人様1回限り有効）", size: "xs", color: "#555555", wrap: true },
+            ],
+          },
+        },
+      },
+    ],
+  });
+}
