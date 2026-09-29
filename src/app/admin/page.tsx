@@ -160,6 +160,31 @@ export default function AdminPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function duplicateEvent(ev: EventRow) {
+    const slot = ev.slots[0];
+    setEditingId(null);
+    setEditingSlotId(null);
+    setTitle(`${ev.title}のコピー`);
+    setDescription(ev.description ?? "");
+    setImageUrl(ev.image_url ?? "");
+    setLocation(ev.location ?? "");
+    setStatus("draft");
+    setSlotDate("");
+    setCapacity(slot?.capacity ?? 10);
+    setError("");
+    setQuestions(
+      [...(ev.event_questions ?? [])]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((q) => ({
+          label: q.label,
+          inputType: q.input_type as QuestionDraft["inputType"],
+          options: (q.options ?? []).join(", "),
+          required: q.required,
+        }))
+    );
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -605,6 +630,12 @@ export default function AdminPage() {
                     {ev.status === "published" && (
                       <span className="text-xs text-ink-hint">配信は下の一括ボタンから</span>
                     )}
+                    <button
+                      onClick={() => duplicateEvent(ev)}
+                      className="text-xs text-ink-sub underline underline-offset-2"
+                    >
+                      複製する
+                    </button>
                     <button
                       onClick={() => startEdit(ev)}
                       className="text-xs text-org-text underline underline-offset-2"
