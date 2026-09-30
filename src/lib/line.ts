@@ -284,3 +284,104 @@ export async function replyCoupon(
     ],
   });
 }
+
+export async function pushCancellationConfirmed(params: {
+  lineUserId: string;
+  eventTitle: string;
+  startsAt: Date;
+  location: string | null;
+}) {
+  const client = lineClient();
+  const dateLabel = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(params.startsAt);
+
+  await client.pushMessage({
+    to: params.lineUserId,
+    messages: [
+      {
+        type: "flex",
+        altText: `予約をキャンセルしました：${params.eventTitle}`,
+        contents: {
+          type: "bubble",
+          header: {
+            type: "box",
+            layout: "vertical",
+            backgroundColor: "#8A8A8E",
+            paddingAll: "16px",
+            contents: [
+              { type: "text", text: "予約をキャンセルしました", color: "#FFFFFF", weight: "bold", size: "md" },
+            ],
+          },
+          body: {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: [
+              { type: "text", text: params.eventTitle, weight: "bold", size: "lg", wrap: true },
+              { type: "text", text: dateLabel, size: "sm", color: "#555555" },
+              ...(params.location
+                ? [{ type: "text", text: params.location, size: "sm", color: "#555555", wrap: true } as const]
+                : []),
+              {
+                type: "text",
+                text: "またのご参加をお待ちしております。",
+                size: "xs",
+                color: "#8A8A8E",
+                margin: "md",
+              },
+            ],
+          },
+        },
+      },
+    ],
+  });
+}
+
+export async function notifyAdminCancellation(params: {
+  eventTitle: string;
+  startsAt: Date;
+  attendeeName: string | null;
+  lineDisplayName: string;
+}) {
+  const adminUserId = process.env.ADMIN_LINE_USER_ID;
+  if (!adminUserId) return; // 未設定なら何もしない
+
+  const client = lineClient();
+  const dateLabel = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(params.startsAt);
+
+  await client.pushMessage({
+    to: adminUserId,
+    messages: [
+      {
+        type: "text",
+        text: `【予約キャンセル通知】\n${params.eventTitle}（${dateLabel}）\n予約者：${params.attendeeName ?? "(未入力)"}（LINE：${params.lineDisplayName}）`,
+      },
+    ],
+  });
+}
+
+export async function pushCouponRedeemed(params: { lineUserId: string; amount: number }) {
+  const client = lineClient();
+  await client.pushMessage({
+    to: params.lineUserId,
+    messages: [
+      {
+        type: "text",
+        text: `${params.amount}円クーポンをご利用いただき、ありがとうございました！またのご来店をお待ちしております。`,
+      },
+    ],
+  });
+}

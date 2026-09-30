@@ -79,6 +79,15 @@ export default function AdminPage() {
   const [couponError, setCouponError] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
+  const [showCouponHistory, setShowCouponHistory] = useState(false);
+  const [couponHistory, setCouponHistory] = useState<
+    { id: string; code: string; amount: number; usedAt: string; displayName: string }[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [showFriends, setShowFriends] = useState(false);
+  const [friends, setFriends] = useState<{ line_user_id: string; display_name: string }[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
 
   async function loadEvents(pw: string) {
     setLoading(true);
@@ -355,8 +364,45 @@ export default function AdminPage() {
         return;
       }
       setCouponResult((c) => (c ? { ...c, status: "used" } : c));
+      if (showCouponHistory) await loadCouponHistory();
     } finally {
       setRedeeming(false);
+    }
+  }
+
+  async function loadCouponHistory() {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/admin/coupons/history", {
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json();
+      setCouponHistory(res.ok ? (data.history ?? []) : []);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function toggleCouponHistory() {
+    const next = !showCouponHistory;
+    setShowCouponHistory(next);
+    if (next) await loadCouponHistory();
+  }
+
+  async function toggleFriends() {
+    const next = !showFriends;
+    setShowFriends(next);
+    if (next && friends.length === 0) {
+      setFriendsLoading(true);
+      try {
+        const res = await fetch("/api/admin/line-users", {
+          headers: { "x-admin-password": password },
+        });
+        const data = await res.json();
+        setFriends(res.ok ? (data.users ?? []) : []);
+      } finally {
+        setFriendsLoading(false);
+      }
     }
   }
 
@@ -775,6 +821,77 @@ export default function AdminPage() {
                   >
                     {redeeming ? "処理中…" : "このクーポンを使用済みにする"}
                   </button>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={toggleCouponHistory}
+              className="mt-4 text-xs text-org-text underline underline-offset-2"
+            >
+              {showCouponHistory ? "使用履歴を閉じる" : "使用履歴を見る"}
+            </button>
+            {showCouponHistory && (
+              <div className="mt-3 border-t border-gray-line pt-3 flex flex-col gap-2">
+                {historyLoading ? (
+                  <p className="text-ink-hint text-xs">読み込み中…</p>
+                ) : couponHistory.length === 0 ? (
+                  <p className="text-ink-hint text-xs">まだ使用されたクーポンはありません。</p>
+                ) : (
+                  couponHistory.map((h) => (
+                    <div key={h.id} className="flex items-center justify-between text-xs">
+                      <span className="text-ink">
+                        {h.displayName}
+                        <span className="text-ink-hint ml-1.5">（{h.code}）</span>
+                      </span>
+                      <span className="text-ink-hint">
+                        {new Intl.DateTimeFormat("ja-JP", {
+                          timeZone: "Asia/Tokyo",
+                          month: "numeric",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }).format(new Date(h.usedAt))}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+            <span className="inline-block w-1 h-4 bg-org rounded-full" />
+            キャンセル通知の宛先設定
+          </h2>
+          <div className="bg-white rounded-xl shadow-s p-4">
+            <p className="text-ink-sub text-xs mb-3">
+              予約がキャンセルされた際、運営側への通知を届けるLINEアカウントを設定できます（Vercelの環境変数
+              <code className="mx-1 px-1.5 py-0.5 bg-gray-bg rounded text-[11px]">ADMIN_LINE_USER_ID</code>
+              に、下の一覧からご自身のuserIdを貼り付けてください）。下のボタンから、最近ボットとやり取りした友だち一覧が見られます。
+            </p>
+            <button onClick={toggleFriends} className="text-xs text-org-text underline underline-offset-2">
+              {showFriends ? "友だち一覧を閉じる" : "友だち一覧（userId確認用）を見る"}
+            </button>
+            {showFriends && (
+              <div className="mt-3 border-t border-gray-line pt-3 flex flex-col gap-2">
+                {friendsLoading ? (
+                  <p className="text-ink-hint text-xs">読み込み中…</p>
+                ) : friends.length === 0 ? (
+                  <p className="text-ink-hint text-xs">
+                    まだ記録がありません。リッチメニューの「イベント情報」か「お得情報」を一度タップすると表示されます。
+                  </p>
+                ) : (
+                  friends.map((f) => (
+                    <div key={f.line_user_id} className="flex items-center justify-between text-xs gap-2">
+                      <span className="text-ink">{f.display_name || "(表示名なし)"}</span>
+                      <code className="text-[11px] text-ink-hint bg-gray-bg px-1.5 py-0.5 rounded truncate max-w-[180px]">
+                        {f.line_user_id}
+                      </code>
+                    </div>
+                  ))
                 )}
               </div>
             )}

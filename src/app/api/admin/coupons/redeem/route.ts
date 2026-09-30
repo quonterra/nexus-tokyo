@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { pushCouponRedeemed } from "@/lib/line";
 
 function checkAuth(req: Request) {
   const password = req.headers.get("x-admin-password");
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
   const supabase = supabaseAdmin();
   const { data: coupon, error: fetchError } = await supabase
     .from("coupons")
-    .select("id, status")
+    .select("id, status, amount, line_user_id")
     .eq("code", normalized)
     .maybeSingle();
 
@@ -32,6 +33,12 @@ export async function POST(req: Request) {
     .eq("id", coupon.id);
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+  try {
+    await pushCouponRedeemed({ lineUserId: coupon.line_user_id, amount: coupon.amount });
+  } catch {
+    // 通知の失敗で使用済み処理自体は失敗させない
+  }
 
   return NextResponse.json({ ok: true });
 }
