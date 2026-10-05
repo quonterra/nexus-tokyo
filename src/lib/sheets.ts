@@ -60,9 +60,9 @@ function mapAnswers(answers: Record<string, string>) {
   const out = { source: "", gender: "", ageGroup: "", referrer: "", sns: "" };
   for (const [label, value] of Object.entries(answers ?? {})) {
     if (!value) continue;
-    if (label.includes("経由")) out.source = value;
-    else if (label.includes("性別")) out.gender = value;
-    else if (label.includes("年代")) out.ageGroup = value;
+    if (/経由|きっかけ|知った/.test(label)) out.source = value;
+    else if (/性別|男女/.test(label)) out.gender = value;
+    else if (/年代|年齢|世代/.test(label)) out.ageGroup = value;
     else if (label.includes("紹介")) out.referrer = value;
     else if (/SNS|ＳＮＳ|インスタ|Instagram|Threads|スレッズ/i.test(label)) out.sns = value;
   }
@@ -78,12 +78,21 @@ async function isOfficialLineFriend(lineUserId: string) {
   }
 }
 
+function pickFee(
+  event: { fee: number | null; fee_male?: number | null; fee_female?: number | null },
+  gender: string
+) {
+  if (gender.includes("男") && event.fee_male != null) return event.fee_male;
+  if (gender.includes("女") && event.fee_female != null) return event.fee_female;
+  return event.fee ?? 0;
+}
+
 async function loadReservation(reservationId: string): Promise<SheetReservation | null> {
   const supabase = supabaseAdmin();
   const { data } = await supabase
     .from("reservations")
     .select(
-      "id, line_user_id, attendee_name, answers, events ( title, fee ), slots ( starts_at ), line_users ( display_name )"
+      "id, line_user_id, attendee_name, answers, events ( title, fee, fee_male, fee_female ), slots ( starts_at ), line_users ( display_name )"
     )
     .eq("id", reservationId)
     .single();
@@ -103,7 +112,7 @@ async function loadReservation(reservationId: string): Promise<SheetReservation 
     startsAt: startsAt.toISOString(),
     attendeeName: data.attendee_name ?? "",
     lineDisplayName: lineUser?.display_name ?? "",
-    fee: event.fee ?? 0,
+    fee: pickFee(event, mapped.gender),
     officialLineAdded: await isOfficialLineFriend(data.line_user_id),
     ...mapped,
   };
@@ -143,4 +152,17 @@ export async function syncAllConfirmedReservationsToSheet() {
 
   await postToSheet({ action: "bulk", reservations: items });
   return { skipped: false as const, count: items.length };
+}
+
+/** 終了したイベントの行を「終了イベント」シートへ移動する */
+export async function archiveFinishedEventsInSheet() {
+  const result = await postToSheet({ action: "archive" });
+  if (result.skipped) return { skipped: true as const, moved: 0 };
+  let moved = 0;
+  try {
+    moved = (JSON.parse(result.text) as { moved?: number }).moved ?? 0;
+  } catch {
+    // 応答が JSON でなくても処理自体は完了している
+  }
+  return { skipped: false as const, moved };
 }

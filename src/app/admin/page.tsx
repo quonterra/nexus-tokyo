@@ -18,6 +18,8 @@ type EventRow = {
   image_url: string | null;
   location: string | null;
   fee: number | null;
+  fee_male: number | null;
+  fee_female: number | null;
   status: string;
   slots: Slot[];
   event_questions: EventQuestion[];
@@ -63,6 +65,9 @@ export default function AdminPage() {
   const [slotDate, setSlotDate] = useState("");
   const [capacity, setCapacity] = useState(10);
   const [fee, setFee] = useState(0);
+  const [feeMale, setFeeMale] = useState("");
+  const [feeFemale, setFeeFemale] = useState("");
+  const [archiving, setArchiving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -132,6 +137,8 @@ export default function AdminPage() {
     setSlotDate("");
     setCapacity(10);
     setFee(0);
+    setFeeMale("");
+    setFeeFemale("");
     setStatus("draft");
     setError("");
     setQuestions([]);
@@ -175,6 +182,30 @@ export default function AdminPage() {
     }
   }
 
+  async function handleArchive() {
+    if (!window.confirm("終了したイベント（開催日が昨日以前）の行を、「終了イベント」シートへ移動します。よろしいですか？")) return;
+    setArchiving(true);
+    setSyncMessage("");
+    try {
+      const res = await fetch("/api/admin/sheets/archive", {
+        method: "POST",
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncMessage(
+          data.error === "SHEETS_NOT_CONFIGURED"
+            ? "スプレッドシート連携がまだ設定されていません"
+            : "移動に失敗しました"
+        );
+        return;
+      }
+      setSyncMessage(`${data.moved}行を「終了イベント」シートへ移動しました`);
+    } finally {
+      setArchiving(false);
+    }
+  }
+
   function addQuestion() {
     setQuestions((qs) => [...qs, { label: "", inputType: "text", options: "", required: false }]);
   }
@@ -199,6 +230,8 @@ export default function AdminPage() {
     setSlotDate(slot ? toDatetimeLocal(slot.starts_at) : "");
     setCapacity(slot?.capacity ?? 10);
     setFee(ev.fee ?? 0);
+    setFeeMale(ev.fee_male == null ? "" : String(ev.fee_male));
+    setFeeFemale(ev.fee_female == null ? "" : String(ev.fee_female));
     setError("");
     setQuestions(
       [...(ev.event_questions ?? [])]
@@ -225,6 +258,8 @@ export default function AdminPage() {
     setSlotDate("");
     setCapacity(slot?.capacity ?? 10);
     setFee(ev.fee ?? 0);
+    setFeeMale(ev.fee_male == null ? "" : String(ev.fee_male));
+    setFeeFemale(ev.fee_female == null ? "" : String(ev.fee_female));
     setError("");
     setQuestions(
       [...(ev.event_questions ?? [])]
@@ -300,6 +335,8 @@ export default function AdminPage() {
             startsAt: new Date(slotDate).toISOString(),
             capacity,
             fee,
+            feeMale: feeMale === "" ? null : Number(feeMale),
+            feeFemale: feeFemale === "" ? null : Number(feeFemale),
             questions: questionsPayload,
           }),
         });
@@ -319,6 +356,8 @@ export default function AdminPage() {
             status,
             slots: [{ startsAt: new Date(slotDate).toISOString(), capacity }],
             fee,
+            feeMale: feeMale === "" ? null : Number(feeMale),
+            feeFemale: feeFemale === "" ? null : Number(feeFemale),
             questions: questionsPayload,
           }),
         });
@@ -675,6 +714,31 @@ export default function AdminPage() {
                 className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
               />
               <p className="text-ink-hint text-[11px] mt-1">スプレッドシートの「参加費」列に反映されます（無料の場合は0）。</p>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="text-[11px] text-ink-sub mb-1 block">男性の参加費（任意）</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={feeMale}
+                    onChange={(e) => setFeeMale(e.target.value)}
+                    placeholder="空欄＝上の参加費"
+                    className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-ink-sub mb-1 block">女性の参加費（任意）</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={feeFemale}
+                    onChange={(e) => setFeeFemale(e.target.value)}
+                    placeholder="空欄＝上の参加費"
+                    className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <p className="text-ink-hint text-[11px] mt-1">男女で金額が違う場合に入力します。予約フォームで「性別」を選ぶと、その金額が表示され、スプレッドシートにも反映されます（質問に「性別」を入れておいてください）。</p>
             </div>
 
             <div>
@@ -936,7 +1000,7 @@ export default function AdminPage() {
           </h2>
           <div className="bg-white rounded-xl shadow-s p-4">
             <p className="text-ink-sub text-xs mb-3">
-              予約が入るたびに、Googleスプレッドシートへ自動で追記されます（キャンセルされた行は削除されず、灰色の取り消し線になり、「予約キャンセル履歴」シートにも記録されます）。手書きで入力した内容は上書きされません。連携を始める前の予約は、下のボタンでまとめて反映できます。
+              予約が入るたびに、Googleスプレッドシートへ自動で追記されます（キャンセルされた行は削除されず、灰色の取り消し線になり、「予約キャンセル履歴」シートにも記録されます）。手書きで入力した内容は上書きされません。開催日を過ぎたイベントは、毎日朝4時ごろに「終了イベント」シートへ自動で移動します。連携を始める前の予約は、下のボタンでまとめて反映できます。
             </p>
             <button
               onClick={handleSheetSync}
@@ -944,6 +1008,13 @@ export default function AdminPage() {
               className="rounded-lg border border-org bg-white text-org-text text-xs font-medium px-3 py-1.5 hover:bg-org-pale transition disabled:opacity-50"
             >
               {syncing ? "反映中…" : "予約済みデータをスプレッドシートに一括反映"}
+            </button>
+            <button
+              onClick={handleArchive}
+              disabled={archiving}
+              className="ml-2 rounded-lg border border-gray-line bg-white text-ink text-xs font-medium px-3 py-1.5 hover:bg-gray-bg transition disabled:opacity-50"
+            >
+              {archiving ? "移動中…" : "終了したイベントを今すぐ移動"}
             </button>
             {syncMessage && <p className="text-ink-sub text-xs mt-2">{syncMessage}</p>}
           </div>

@@ -1,9 +1,11 @@
 /**
- * NEXUS TOKYO 予約 → Googleスプレッドシート 自動追記スクリプト（v2）
+ * NEXUS TOKYO 予約 → Googleスプレッドシート 自動追記スクリプト（v3）
  *
  * - 予約が入ると「{月}月イベント(自動)」シートに1行追加（イベントごとにまとまります）
  * - キャンセルされた予約は行を残したまま、灰色＋取り消し線にします（人数・参加費の集計からは除外）
  *   あわせて「予約キャンセル履歴」シートにも記録します
+ * - 新しいイベントは日付順の位置に追加します（直近のイベントが上に来ます）
+ * - 開催日を過ぎたイベントは、毎日1回「終了イベント」シートへ自動で移動します
  * - 手書きの入力は消しません
  *     ・予約システム由来の行は「空欄のセルだけ」を埋め、すでに入力されたセルは上書きしません
  *     ・手書きで追加した行には一切触りません
@@ -17,6 +19,7 @@ const ID_COL = 18;      // R列（非表示）: 予約ID
 const STATUS_COL = 19;  // S列（非表示）: 「キャンセル」と入る
 const HEADERS = ['参加', 'イベント名', '名前', '何経由', '性別', '年代', '参加費', '公式LINE\n追加', '紹介者', 'SNS', 'どんな人か', 'イベントのゴール', 'LINE表示名'];
 const CANCEL_LABEL = 'キャンセル';
+const ARCHIVE_SHEET = '終了イベント';
 
 function doGet() {
   return ContentService.createTextOutput('NEXUS TOKYO sheet webhook: ok');
@@ -36,6 +39,8 @@ function doPost(e) {
       cancel_(ss, body.reservation);
     } else if (body.action === 'bulk') {
       (body.reservations || []).forEach(function (r) { upsert_(ss, r); });
+    } else if (body.action === 'archive') {
+      return json_({ ok: true, moved: archiveFinished_(ss) });
     } else {
       return json_({ ok: false, error: 'unknown action' });
     }
@@ -133,6 +138,20 @@ function insertionRow_(sh, label) {
       sh.insertRowAfter(row);
       return row + 1;
     }
+    // 新しいイベント：日付順になる位置に挿入する（直近のイベントが上に来る）
+    const t = labelTime_(label);
+    if (t !== null) {
+      for (let i = 0; i < labels.length; i++) {
+        const lt = labelTime_(labels[i][0]);
+        if (lt !== null && lt > t) {
+          const row = i + 3;
+          sh.insertRowsBefore(row, 2); // 新イベントの1行目 + 区切りの空白行
+          const sep = sh.getRange(row + 1, 1, 1, COL.LINE_NAME);
+          sep.clearContent().clearDataValidations().setFontColor('#000000').setFontLine('none').setBackground(null);
+          return row;
+        }
+      }
+    }
     return last + 2;
   }
   return 3;
@@ -169,7 +188,9 @@ function fillBlanks_(sh, row, r) {
   Object.keys(target).forEach(function (c) {
     const cell = sh.getRange(row, Number(c));
     const value = target[c];
-    if (cell.getValue() === '' && value !== '' && value !== null && value !== undefined) {
+    const current = cell.getValue();
+    const isBlank = current === '' || (Number(c) === COL.FEE && current === 0);
+    if (isBlank && value !== '' && value !== null && value !== undefined && !(Number(c) === COL.FEE && value === 0)) {
       cell.setValue(value);
     }
   });
@@ -201,17 +222,23 @@ function updateSummary_(sh) {
 /* ---------- キャンセル ---------- */
 
 function cancel_(ss, r) {
-  const sh = ss.getSheetByName(monthSheetName_(r.startsAt));
-  if (sh) {
-    sh.hideColumns(ID_COL, 2);
-    const row = findRowById_(sh, r.id);
-    if (row > 0) {
-      // 行は消さずに、灰色＋取り消し線にする（入力済みの内容・手書きのメモはそのまま残る）
-      sh.getRange(row, STATUS_COL).setValue(CANCEL_LABEL);
-      sh.getRange(row, COL.CHECK, 1, COL.LINE_NAME - COL.CHECK + 1)
-        .setFontColor('#9CA3AF').setFontLine('line-through').setBackground('#F3F4F6');
-      updateSummary_(sh);
+  let sh = ss.getSheetByName(monthSheetName_(r.startsAt));
+  let row = sh ? findRowById_(sh, r.id) : 0;
+  if (row === 0) {
+    // すでに「終了イベント」へ移動済みの場合はそちらを探す
+    const arch = ss.getSheetByName(ARCHIVE_SHEET);
+    if (arch) {
+      const found = findRowById_(arch, r.id);
+      if (found > 0) { sh = arch; row = found; }
     }
+  }
+  if (sh && row > 0) {
+    sh.hideColumns(ID_COL, 2);
+    // 行は消さずに、灰色＋取り消し線にする（入力済みの内容・手書きのメモはそのまま残る）
+    sh.getRange(row, STATUS_COL).setValue(CANCEL_LABEL);
+    sh.getRange(row, COL.CHECK, 1, COL.LINE_NAME - COL.CHECK + 1)
+      .setFontColor('#9CA3AF').setFontLine('line-through').setBackground('#F3F4F6');
+    if (sh.getName() !== ARCHIVE_SHEET) updateSummary_(sh);
   }
   logCancel_(ss, r);
 }
@@ -227,4 +254,101 @@ function logCancel_(ss, r) {
   }
   log.appendRow([new Date(), r.eventLabel, r.attendeeName, r.lineDisplayName, r.id]);
   log.getRange(log.getLastRow(), 1).setNumberFormat('yyyy/MM/dd HH:mm');
+}
+
+/* ---------- 日付・終了イベントの移動 ---------- */
+
+function todayJst_() {
+  const j = new Date(Date.now() + 9 * 3600 * 1000);
+  return Date.UTC(j.getUTCFullYear(), j.getUTCMonth(), j.getUTCDate());
+}
+
+// 「10/7 イベント名」の先頭の日付を、日本時間の日付(UTC零時で表現)にして返す。読み取れなければ null
+function labelTime_(label) {
+  const m = String(label).match(/^\s*(\d{1,2})\/(\d{1,2})(?:\s|$)/);
+  if (!m) return null;
+  const mon = Number(m[1]), day = Number(m[2]);
+  const today = todayJst_();
+  const y0 = new Date(today).getUTCFullYear();
+  let best = null, bestDiff = Infinity;
+  for (let y = y0 - 1; y <= y0 + 1; y++) {
+    const t = Date.UTC(y, mon - 1, day);
+    const diff = Math.abs(t - today);
+    if (diff < bestDiff) { best = t; bestDiff = diff; }
+  }
+  return best;
+}
+
+function archiveSheet_(ss) {
+  let arch = ss.getSheetByName(ARCHIVE_SHEET);
+  if (!arch) {
+    arch = ss.insertSheet(ARCHIVE_SHEET);
+    arch.getRange('C1').setValue('終了イベント一覧').setFontWeight('bold');
+    arch.getRange(2, 2, 1, HEADERS.length).setValues([HEADERS])
+      .setFontWeight('bold').setBackground('#6B7280').setFontColor('#FFFFFF').setWrap(true).setVerticalAlignment('middle');
+    const widths = { 1: 20, 2: 50, 3: 190, 4: 120, 5: 110, 6: 60, 7: 70, 8: 70, 9: 70, 10: 90, 11: 180, 12: 180, 13: 150, 14: 130 };
+    Object.keys(widths).forEach(function (c) { arch.setColumnWidth(Number(c), widths[c]); });
+    arch.setFrozenRows(2);
+  }
+  arch.hideColumns(ID_COL, 2);
+  return arch;
+}
+
+// 開催日が昨日以前のイベントの行を「終了イベント」シートへ移す。移した行数を返す
+function archiveFinished_(ss) {
+  const today = todayJst_();
+  let movedTotal = 0;
+
+  ss.getSheets().forEach(function (sh) {
+    if (!/^\d{1,2}月イベント\(自動\)$/.test(sh.getName())) return;
+    const last = lastDataRow_(sh);
+    if (last < 3) return;
+
+    const labels = sh.getRange(3, COL.EVENT, last - 2, 1).getValues().map(function (v) { return v[0]; });
+
+    // 終了したイベントの行を、連続した範囲（run）にまとめる
+    const runs = [];
+    labels.forEach(function (label, i) {
+      const t = labelTime_(label);
+      if (t === null || t >= today) return;
+      const row = i + 3;
+      const prev = runs[runs.length - 1];
+      if (prev && prev.label === label && prev.start + prev.n === row) prev.n++;
+      else runs.push({ start: row, n: 1, label: label, t: t });
+    });
+    if (runs.length === 0) return;
+
+    const arch = archiveSheet_(ss);
+    const ordered = runs.slice().sort(function (a, b) { return a.t - b.t || a.start - b.start; });
+    let prevLabel = null;
+    ordered.forEach(function (run) {
+      const lastArch = lastDataRow_(arch);
+      let dest = lastArch + 1;
+      if (lastArch >= 3 && run.label !== prevLabel) dest += 1; // イベントの区切りに空白行
+      sh.getRange(run.start, COL.CHECK, run.n, COL.LINE_NAME - COL.CHECK + 1).copyTo(arch.getRange(dest, COL.CHECK));
+      sh.getRange(run.start, ID_COL, run.n, 2).copyTo(arch.getRange(dest, ID_COL));
+      prevLabel = run.label;
+      movedTotal += run.n;
+    });
+
+    // 元のシートから削除（下の行から消す）
+    runs.slice().sort(function (a, b) { return b.start - a.start; }).forEach(function (run) {
+      sh.deleteRows(run.start, run.n);
+    });
+
+    tidyBlankRows_(sh);
+    updateSummary_(sh);
+  });
+  return movedTotal;
+}
+
+// 先頭や連続する空白行を取り除く
+function tidyBlankRows_(sh) {
+  const last = lastDataRow_(sh);
+  if (last < 3) return;
+  const vals = sh.getRange(3, COL.EVENT, last - 2, COL.LINE_NAME - COL.EVENT + 1).getValues();
+  const blank = vals.map(function (row) { return row.every(function (v) { return v === ''; }); });
+  for (let i = blank.length - 1; i >= 0; i--) {
+    if (blank[i] && (i === 0 || blank[i - 1])) sh.deleteRow(i + 3);
+  }
 }

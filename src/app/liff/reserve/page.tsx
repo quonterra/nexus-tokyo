@@ -25,6 +25,8 @@ type EventItem = {
   image_url: string | null;
   location: string | null;
   fee: number | null;
+  fee_male: number | null;
+  fee_female: number | null;
   slots: Slot[];
   event_questions: Question[];
 };
@@ -49,6 +51,12 @@ function formatSlot(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
+}
+
+function feeFor(ev: EventItem, gender: string | undefined) {
+  if (gender?.includes("男") && ev.fee_male != null) return ev.fee_male;
+  if (gender?.includes("女") && ev.fee_female != null) return ev.fee_female;
+  return ev.fee ?? 0;
 }
 
 export default function ReservePage() {
@@ -304,7 +312,11 @@ export default function ReservePage() {
       <Shell>
         <TopNav onBack={() => setStep("list")} onMine={loadMine} />
         <h1 className="text-lg font-semibold text-ink mb-1">{selectedEvent.title}</h1>
-        {selectedEvent.fee ? (
+        {selectedEvent.fee_male != null || selectedEvent.fee_female != null ? (
+          <p className="text-sm font-medium text-ink mb-2">
+            参加費：男性 {feeFor(selectedEvent, "男").toLocaleString()}円／女性 {feeFor(selectedEvent, "女").toLocaleString()}円
+          </p>
+        ) : selectedEvent.fee ? (
           <p className="text-sm font-medium text-ink mb-2">参加費：{selectedEvent.fee.toLocaleString()}円</p>
         ) : null}
         {selectedEvent.description && (
@@ -402,6 +414,21 @@ export default function ReservePage() {
             ))}
           </div>
         )}
+
+        {(() => {
+          const genderQ = selectedEvent.event_questions.find((q) => q.label.includes("性別"));
+          const hasGenderFee = selectedEvent.fee_male != null || selectedEvent.fee_female != null;
+          if (!genderQ || !hasGenderFee) return null;
+          const selected = answers[genderQ.id];
+          return (
+            <div className="mb-4 rounded-xl bg-org-pale px-4 py-3">
+              <p className="text-xs text-ink-sub mb-0.5">あなたの参加費</p>
+              <p className="text-base font-semibold text-org-text">
+                {selected ? `${feeFor(selectedEvent, selected).toLocaleString()}円` : "性別を選択すると表示されます"}
+              </p>
+            </div>
+          );
+        })()}
 
         {errorMessage && <p className="text-org-text text-xs mb-3">{errorMessage}</p>}
 

@@ -18,12 +18,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const body = await req.json();
-  const { title, description, imageUrl, location, fee, status, slotId, startsAt, capacity, questions } = body as {
+  const { title, description, imageUrl, location, fee, feeMale, feeFemale, status, slotId, startsAt, capacity, questions } = body as {
     title: string;
     description?: string;
     imageUrl?: string;
     location?: string;
     fee?: number;
+    feeMale?: number | null;
+    feeFemale?: number | null;
     status: "draft" | "published";
     slotId?: string;
     startsAt?: string;
@@ -45,6 +47,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       image_url: imageUrl ?? null,
       location: location ?? null,
       fee: fee ?? 0,
+      fee_male: feeMale ?? null,
+      fee_female: feeFemale ?? null,
       status,
       updated_at: new Date().toISOString(),
     })
