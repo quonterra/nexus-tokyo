@@ -936,7 +936,7 @@ export default function AdminPage() {
           </h2>
           <div className="bg-white rounded-xl shadow-s p-4">
             <p className="text-ink-sub text-xs mb-3">
-              予約が入るたびに、Googleスプレッドシートへ自動で追記されます（キャンセル時は該当行が削除され、「キャンセル履歴」シートに記録されます）。連携を始める前の予約は、下のボタンでまとめて反映できます。
+              予約が入るたびに、Googleスプレッドシートへ自動で追記されます（キャンセルされた行は削除されず、灰色の取り消し線になり、「予約キャンセル履歴」シートにも記録されます）。手書きで入力した内容は上書きされません。連携を始める前の予約は、下のボタンでまとめて反映できます。
             </p>
             <button
               onClick={handleSheetSync}
