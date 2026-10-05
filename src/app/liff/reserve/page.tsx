@@ -100,6 +100,10 @@ export default function ReservePage() {
         }
 
         const params = new URLSearchParams(window.location.search);
+        if (params.get("view") === "mine") {
+          await loadMine();
+          return;
+        }
         const targetId = params.get("event");
         const target = targetId ? list.find((e) => e.id === targetId) : null;
         if (target) {

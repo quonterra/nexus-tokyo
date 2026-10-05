@@ -11,6 +11,11 @@ export function lineClient() {
   return new MessagingApiClient({ channelAccessToken });
 }
 
+// 予約の確認・キャンセル画面を直接開くLIFFリンク
+function cancelUrl() {
+  return `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}?view=mine`;
+}
+
 export function buildEventsCarouselMessage(events: UpcomingEvent[]) {
   const bubbles = events.slice(0, 12).map((event) => {
     const dateLabel = new Intl.DateTimeFormat("ja-JP", {
@@ -151,6 +156,25 @@ export async function pushReservationReminder(params: {
                 : []),
             ],
           },
+          footer: {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: [
+              {
+                type: "text",
+                text: "予定が合わなくなった場合は、こちらからキャンセルできます。",
+                size: "xs",
+                color: "#8A8A8E",
+                wrap: true,
+              },
+              {
+                type: "button",
+                style: "secondary",
+                action: { type: "uri", label: "キャンセルの場合はこちら", uri: cancelUrl() },
+              },
+            ],
+          },
         },
       },
     ],
@@ -206,6 +230,25 @@ export async function pushReservationConfirmed(params: {
               ...(params.location
                 ? [{ type: "text", text: params.location, size: "sm", color: "#555555", wrap: true } as const]
                 : []),
+            ],
+          },
+          footer: {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: [
+              {
+                type: "text",
+                text: "予定が合わなくなった場合は、こちらからキャンセルできます。",
+                size: "xs",
+                color: "#8A8A8E",
+                wrap: true,
+              },
+              {
+                type: "button",
+                style: "secondary",
+                action: { type: "uri", label: "キャンセルの場合はこちら", uri: cancelUrl() },
+              },
             ],
           },
         },
