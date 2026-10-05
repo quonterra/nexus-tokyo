@@ -8,7 +8,7 @@ export async function GET() {
     .from("events")
     .select(
       `
-      id, title, description, image_url, location, location_url, status,
+      id, title, description, image_url, location, location_url, fee, status,
       slots ( id, starts_at, ends_at, capacity, reserved_count ),
       event_questions ( id, label, input_type, options, required, sort_order )
     `

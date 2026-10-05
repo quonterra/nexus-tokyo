@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { pushReservationConfirmed } from "@/lib/line";
 import { verifyLiffProfile } from "@/lib/liff-auth";
+import { syncReservationToSheet } from "@/lib/sheets";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -66,6 +67,14 @@ export async function POST(req: Request) {
     } catch {
       // プッシュ通知の失敗は予約自体を失敗させない
     }
+  }
+
+  // スプレッドシートへ反映（失敗しても予約自体は成立させる）
+  try {
+    const reservationId = (reservation as { id?: string } | null)?.id;
+    if (reservationId) await syncReservationToSheet(reservationId);
+  } catch {
+    // シート連携の失敗は予約を妨げない
   }
 
   return NextResponse.json({ reservation });

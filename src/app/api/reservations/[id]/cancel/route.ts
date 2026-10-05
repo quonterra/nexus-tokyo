@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { verifyLiffProfile } from "@/lib/liff-auth";
 import { pushCancellationConfirmed, notifyAdminCancellation } from "@/lib/line";
+import { syncCancellationToSheet } from "@/lib/sheets";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -56,6 +57,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   } catch {
     // 通知の失敗でキャンセル処理自体は失敗させない
+  }
+
+  try {
+    await syncCancellationToSheet(id);
+  } catch {
+    // シート連携の失敗でキャンセル処理自体は失敗させない
   }
 
   return NextResponse.json({ reservation: data });

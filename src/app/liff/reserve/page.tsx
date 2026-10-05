@@ -24,6 +24,7 @@ type EventItem = {
   description: string | null;
   image_url: string | null;
   location: string | null;
+  fee: number | null;
   slots: Slot[];
   event_questions: Question[];
 };
@@ -303,6 +304,9 @@ export default function ReservePage() {
       <Shell>
         <TopNav onBack={() => setStep("list")} onMine={loadMine} />
         <h1 className="text-lg font-semibold text-ink mb-1">{selectedEvent.title}</h1>
+        {selectedEvent.fee ? (
+          <p className="text-sm font-medium text-ink mb-2">参加費：{selectedEvent.fee.toLocaleString()}円</p>
+        ) : null}
         {selectedEvent.description && (
           <p className="text-ink-sub text-sm mb-4 whitespace-pre-wrap">{selectedEvent.description}</p>
         )}

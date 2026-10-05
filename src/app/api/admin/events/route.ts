@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabase
     .from("events")
     .select(
-      "id, title, description, image_url, location, status, created_at, slots ( id, starts_at, capacity, reserved_count ), event_questions ( id, label, input_type, options, required, sort_order )"
+      "id, title, description, image_url, location, fee, status, created_at, slots ( id, starts_at, capacity, reserved_count ), event_questions ( id, label, input_type, options, required, sort_order )"
     )
     .order("created_at", { ascending: false });
 
@@ -32,12 +32,13 @@ export async function POST(req: Request) {
   if (!checkAuth(req)) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
   const body = await req.json();
-  const { title, description, imageUrl, location, locationUrl, status, slots, questions } = body as {
+  const { title, description, imageUrl, location, locationUrl, fee, status, slots, questions } = body as {
     title: string;
     description?: string;
     imageUrl?: string;
     location?: string;
     locationUrl?: string;
+    fee?: number;
     status: "draft" | "published";
     slots: { startsAt: string; capacity: number }[];
     questions?: QuestionInput[];
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       image_url: imageUrl ?? null,
       location: location ?? null,
       location_url: locationUrl ?? null,
+      fee: fee ?? 0,
       status: status ?? "draft",
     })
     .select()

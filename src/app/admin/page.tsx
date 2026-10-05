@@ -17,6 +17,7 @@ type EventRow = {
   description: string | null;
   image_url: string | null;
   location: string | null;
+  fee: number | null;
   status: string;
   slots: Slot[];
   event_questions: EventQuestion[];
@@ -61,6 +62,9 @@ export default function AdminPage() {
   const [status, setStatus] = useState<"draft" | "published">("draft");
   const [slotDate, setSlotDate] = useState("");
   const [capacity, setCapacity] = useState(10);
+  const [fee, setFee] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [broadcastingAll, setBroadcastingAll] = useState(false);
@@ -127,9 +131,48 @@ export default function AdminPage() {
     setLocation("");
     setSlotDate("");
     setCapacity(10);
+    setFee(0);
     setStatus("draft");
     setError("");
     setQuestions([]);
+  }
+
+  function addStandardQuestions() {
+    const standard: QuestionDraft[] = [
+      { label: "何経由で知りましたか？", inputType: "select", options: "つなげーと, トリノワLINE, 口コミ, Nexus20, スレッズ, Instagram, その他", required: true },
+      { label: "性別", inputType: "select", options: "女性, 男性", required: true },
+      { label: "年代", inputType: "select", options: "20代, 30代, 40代, 50代以上", required: true },
+      { label: "紹介者（いれば）", inputType: "text", options: "", required: false },
+      { label: "SNS（Instagram・Threadsなど）", inputType: "text", options: "", required: false },
+    ];
+    setQuestions((qs) => {
+      const existing = new Set(qs.map((q) => q.label));
+      return [...qs, ...standard.filter((q) => !existing.has(q.label))];
+    });
+  }
+
+  async function handleSheetSync() {
+    if (!window.confirm("確定済みの予約をすべてスプレッドシートに反映します（すでに反映済みのものは更新されるだけで重複しません）。よろしいですか？")) return;
+    setSyncing(true);
+    setSyncMessage("");
+    try {
+      const res = await fetch("/api/admin/sheets/sync", {
+        method: "POST",
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncMessage(
+          data.error === "SHEETS_NOT_CONFIGURED"
+            ? "スプレッドシート連携がまだ設定されていません（環境変数の登録が必要です）"
+            : "反映に失敗しました"
+        );
+        return;
+      }
+      setSyncMessage(`${data.count}件の予約をスプレッドシートに反映しました`);
+    } finally {
+      setSyncing(false);
+    }
   }
 
   function addQuestion() {
@@ -155,6 +198,7 @@ export default function AdminPage() {
     setStatus(ev.status === "published" ? "published" : "draft");
     setSlotDate(slot ? toDatetimeLocal(slot.starts_at) : "");
     setCapacity(slot?.capacity ?? 10);
+    setFee(ev.fee ?? 0);
     setError("");
     setQuestions(
       [...(ev.event_questions ?? [])]
@@ -180,6 +224,7 @@ export default function AdminPage() {
     setStatus("draft");
     setSlotDate("");
     setCapacity(slot?.capacity ?? 10);
+    setFee(ev.fee ?? 0);
     setError("");
     setQuestions(
       [...(ev.event_questions ?? [])]
@@ -254,6 +299,7 @@ export default function AdminPage() {
             slotId: editingSlotId,
             startsAt: new Date(slotDate).toISOString(),
             capacity,
+            fee,
             questions: questionsPayload,
           }),
         });
@@ -272,6 +318,7 @@ export default function AdminPage() {
             location,
             status,
             slots: [{ startsAt: new Date(slotDate).toISOString(), capacity }],
+            fee,
             questions: questionsPayload,
           }),
         });
@@ -521,13 +568,22 @@ export default function AdminPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-medium text-ink-sub">参加者への質問（任意）</label>
-                <button
-                  type="button"
-                  onClick={addQuestion}
-                  className="text-xs text-org-text underline underline-offset-2"
-                >
-                  ＋ 質問を追加
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={addStandardQuestions}
+                    className="text-xs text-ink-sub underline underline-offset-2"
+                  >
+                    標準の質問セットを追加
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addQuestion}
+                    className="text-xs text-org-text underline underline-offset-2"
+                  >
+                    ＋ 質問を追加
+                  </button>
+                </div>
               </div>
               {questions.length === 0 ? (
                 <p className="text-ink-hint text-xs">
@@ -607,6 +663,18 @@ export default function AdminPage() {
                   className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-ink-sub mb-1 block">参加費（円）</label>
+              <input
+                type="number"
+                min={0}
+                value={fee}
+                onChange={(e) => setFee(Number(e.target.value))}
+                className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
+              />
+              <p className="text-ink-hint text-[11px] mt-1">スプレッドシートの「参加費」列に反映されます（無料の場合は0）。</p>
             </div>
 
             <div>
@@ -858,6 +926,26 @@ export default function AdminPage() {
                 )}
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+            <span className="inline-block w-1 h-4 bg-org rounded-full" />
+            スプレッドシート連携
+          </h2>
+          <div className="bg-white rounded-xl shadow-s p-4">
+            <p className="text-ink-sub text-xs mb-3">
+              予約が入るたびに、Googleスプレッドシートへ自動で追記されます（キャンセル時は該当行が削除され、「キャンセル履歴」シートに記録されます）。連携を始める前の予約は、下のボタンでまとめて反映できます。
+            </p>
+            <button
+              onClick={handleSheetSync}
+              disabled={syncing}
+              className="rounded-lg border border-org bg-white text-org-text text-xs font-medium px-3 py-1.5 hover:bg-org-pale transition disabled:opacity-50"
+            >
+              {syncing ? "反映中…" : "予約済みデータをスプレッドシートに一括反映"}
+            </button>
+            {syncMessage && <p className="text-ink-sub text-xs mt-2">{syncMessage}</p>}
           </div>
         </section>
 
