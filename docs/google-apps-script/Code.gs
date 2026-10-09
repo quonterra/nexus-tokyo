@@ -1,5 +1,5 @@
 /**
- * NEXUS TOKYO 予約 → Googleスプレッドシート 自動追記スクリプト（v3）
+ * NEXUS TOKYO 予約 → Googleスプレッドシート 自動追記スクリプト（v4）
  *
  * - 予約が入ると「{月}月イベント(自動)」シートに1行追加（イベントごとにまとまります）
  * - キャンセルされた予約は行を残したまま、灰色＋取り消し線にします（人数・参加費の集計からは除外）
@@ -12,6 +12,7 @@
  */
 
 const TOKEN = 'ここに合言葉を貼り付け'; // Vercelの SHEETS_WEBHOOK_TOKEN と同じ値にする
+const VERSION = 'v4'; // 管理画面で「最新版が動いているか」を確認するための印
 
 const COL = { CHECK: 2, EVENT: 3, NAME: 4, SOURCE: 5, GENDER: 6, AGE: 7, FEE: 8, LINE_ADDED: 9, REFERRER: 10, SNS: 11, WHO: 12, GOAL: 13, LINE_NAME: 14 };
 const SUMMARY_COL = 16; // P列: イベント名 / Q列: 人数
@@ -22,7 +23,7 @@ const CANCEL_LABEL = 'キャンセル';
 const ARCHIVE_SHEET = '終了イベント';
 
 function doGet() {
-  return ContentService.createTextOutput('NEXUS TOKYO sheet webhook: ok');
+  return ContentService.createTextOutput('NEXUS TOKYO sheet webhook: ok (' + VERSION + ')');
 }
 
 function doPost(e) {
@@ -33,18 +34,31 @@ function doPost(e) {
     if (body.token !== TOKEN) return json_({ ok: false, error: 'unauthorized' });
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return json_({ ok: false, error: 'このスクリプトがスプレッドシートに紐づいていません（スプレッドシートの「拡張機能」→「Apps Script」から開いたものを使ってください）' });
+    }
+    const info = { version: VERSION, spreadsheet: ss.getName(), url: ss.getUrl() };
+
     if (body.action === 'upsert') {
-      upsert_(ss, body.reservation);
+      const stats = newStats_();
+      upsert_(ss, body.reservation, stats);
+      finishStats_(stats);
+      return json_(Object.assign({ ok: true, added: stats.added, updated: stats.updated, sheets: Object.keys(stats.sheets) }, info));
     } else if (body.action === 'cancel') {
       cancel_(ss, body.reservation);
+      return json_(Object.assign({ ok: true }, info));
     } else if (body.action === 'bulk') {
-      (body.reservations || []).forEach(function (r) { upsert_(ss, r); });
+      // まとめて反映する場合は、集計欄の更新を最後に1回だけ行って速くする
+      const stats = newStats_();
+      stats.deferSummary = true;
+      (body.reservations || []).forEach(function (r) { upsert_(ss, r, stats); });
+      finishStats_(stats);
+      return json_(Object.assign({ ok: true, added: stats.added, updated: stats.updated, sheets: Object.keys(stats.sheets) }, info));
     } else if (body.action === 'archive') {
-      return json_({ ok: true, moved: archiveFinished_(ss) });
+      return json_(Object.assign({ ok: true, moved: archiveFinished_(ss) }, info));
     } else {
-      return json_({ ok: false, error: 'unknown action' });
+      return json_({ ok: false, error: 'unknown action: ' + body.action });
     }
-    return json_({ ok: true });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   } finally {
@@ -94,16 +108,28 @@ function setupSheet_(sh, month) {
 
 /* ---------- 予約の追加・更新 ---------- */
 
-function upsert_(ss, r) {
+function newStats_() {
+  return { added: 0, updated: 0, sheets: {}, deferSummary: false };
+}
+
+// まとめて反映したときに、集計欄を最後に1回だけ作り直す
+function finishStats_(stats) {
+  Object.keys(stats.sheets).forEach(function (name) { updateSummary_(stats.sheets[name]); });
+}
+
+function upsert_(ss, r, stats) {
   const sh = monthSheet_(ss, r.startsAt);
   const existing = findRowById_(sh, r.id);
   if (existing > 0) {
     fillBlanks_(sh, existing, r); // 既存行は空欄だけ埋める（手書きは消さない）
+    if (stats) stats.updated++;
   } else {
     const row = insertionRow_(sh, r.eventLabel);
     writeNewRow_(sh, row, r);
+    if (stats) stats.added++;
   }
-  updateSummary_(sh);
+  if (stats) stats.sheets[sh.getName()] = sh; // 集計欄は finishStats_ で更新する
+  else updateSummary_(sh);
 }
 
 function lastDataRow_(sh) {

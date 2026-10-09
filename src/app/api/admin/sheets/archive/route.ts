@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   try {
     const result = await archiveFinishedEventsInSheet();
     if (result.skipped) return NextResponse.json({ error: "SHEETS_NOT_CONFIGURED" }, { status: 400 });
-    return NextResponse.json({ ok: true, moved: result.moved });
+    return NextResponse.json({ ok: true, moved: result.moved, spreadsheet: result.spreadsheet, url: result.url });
   } catch (e) {
     return NextResponse.json(
       { error: "ARCHIVE_FAILED", detail: e instanceof Error ? e.message : String(e) },

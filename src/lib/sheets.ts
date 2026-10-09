@@ -24,6 +24,20 @@ function sheetsConfig() {
 }
 
 const SHEET_TIMEOUT_MS = 50000;
+// docs/google-apps-script/Code.gs の VERSION と合わせる（古いスクリプトが動いていないか確認するため）
+const LATEST_SCRIPT_VERSION = "v4";
+
+type SheetResponse = {
+  ok?: boolean;
+  error?: string;
+  version?: string;
+  spreadsheet?: string;
+  url?: string;
+  added?: number;
+  updated?: number;
+  sheets?: string[];
+  moved?: number;
+};
 
 async function postToSheet(body: Record<string, unknown>) {
   const config = sheetsConfig();
@@ -43,7 +57,7 @@ async function postToSheet(body: Record<string, unknown>) {
 
     // Apps Script の応答を確認し、失敗なら原因が分かる形でエラーにする
     if (!res.ok) throw new Error(`Apps Scriptが HTTP ${res.status} を返しました`);
-    let parsed: { ok?: boolean; error?: string } | null = null;
+    let parsed: SheetResponse | null = null;
     try {
       parsed = JSON.parse(text);
     } catch {
@@ -56,7 +70,7 @@ async function postToSheet(body: Record<string, unknown>) {
           : `Apps Script側でエラー：${parsed.error ?? "不明"}`
       );
     }
-    return { skipped: false as const, ok: true, text };
+    return { skipped: false as const, ok: true, text, data: parsed as SheetResponse };
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
       throw new Error(`Apps Scriptの応答が${SHEET_TIMEOUT_MS / 1000}秒以内に返りませんでした`);
@@ -178,13 +192,23 @@ export async function syncReservationsChunkToSheet(offset: number, limit: number
     const item = await loadReservation(id);
     if (item) items.push(item);
   }
-  if (items.length > 0) await postToSheet({ action: "bulk", reservations: items });
+  let info: SheetResponse = {};
+  if (items.length > 0) {
+    const result = await postToSheet({ action: "bulk", reservations: items });
+    if (!result.skipped) info = result.data;
+  }
 
   const nextOffset = offset + slice.length;
   return {
     skipped: false as const,
     total: ids.length,
-    processed: items.length,
+    loaded: items.length, // 予約情報を読み込めて、スプレッドシートに送った件数
+    added: info.added ?? 0,
+    updated: info.updated ?? 0,
+    sheets: info.sheets ?? [],
+    spreadsheet: info.spreadsheet ?? "",
+    url: info.url ?? "",
+    outdated: items.length > 0 && info.version !== LATEST_SCRIPT_VERSION,
     nextOffset,
     done: nextOffset >= ids.length,
   };
@@ -194,11 +218,10 @@ export async function syncReservationsChunkToSheet(offset: number, limit: number
 export async function archiveFinishedEventsInSheet() {
   const result = await postToSheet({ action: "archive" });
   if (result.skipped) return { skipped: true as const, moved: 0 };
-  let moved = 0;
-  try {
-    moved = (JSON.parse(result.text) as { moved?: number }).moved ?? 0;
-  } catch {
-    // 応答が JSON でなくても処理自体は完了している
-  }
-  return { skipped: false as const, moved };
+  return {
+    skipped: false as const,
+    moved: result.data.moved ?? 0,
+    spreadsheet: result.data.spreadsheet ?? "",
+    url: result.data.url ?? "",
+  };
 }

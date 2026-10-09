@@ -70,6 +70,7 @@ export default function AdminPage() {
   const [archiving, setArchiving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [syncLink, setSyncLink] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [broadcastingAll, setBroadcastingAll] = useState(false);
@@ -162,9 +163,18 @@ export default function AdminPage() {
     if (!window.confirm("確定済みの予約をすべてスプレッドシートに反映します（すでに反映済みのものは更新されるだけで重複しません）。よろしいですか？")) return;
     setSyncing(true);
     setSyncMessage("");
+    setSyncLink("");
     try {
       let offset = 0;
       let total = 0;
+      let loaded = 0;
+      let added = 0;
+      let updated = 0;
+      let outdated = false;
+      let spreadsheet = "";
+      let url = "";
+      const sheetNames = new Set<string>();
+
       // 少しずつ送る（一度に全件だとスプレッドシート側の処理が間に合わないため）
       for (;;) {
         const res = await fetch("/api/admin/sheets/sync", {
@@ -182,11 +192,37 @@ export default function AdminPage() {
           return;
         }
         total = data.total;
+        loaded += data.loaded;
+        added += data.added;
+        updated += data.updated;
+        outdated = outdated || data.outdated;
+        if (data.spreadsheet) spreadsheet = data.spreadsheet;
+        if (data.url) url = data.url;
+        (data.sheets ?? []).forEach((n: string) => sheetNames.add(n));
         if (data.done) break;
         offset = data.nextOffset;
         setSyncMessage(`反映中… ${Math.min(offset, total)} / ${total} 件`);
       }
-      setSyncMessage(`${total}件の予約をスプレッドシートに反映しました`);
+
+      const lines: string[] = [];
+      if (outdated) {
+        lines.push(
+          "⚠ Apps Scriptが最新版ではありません。Apps Scriptで「デプロイ」→「デプロイを管理」→鉛筆アイコン→バージョン「新バージョン」→「デプロイ」を行ってください（「新しいデプロイ」ではありません）。"
+        );
+      }
+      if (total === 0) {
+        lines.push("反映する予約がありません。");
+      } else if (loaded === 0) {
+        lines.push(`予約${total}件を読み込めず、スプレッドシートには何も書き込まれていません。`);
+      } else {
+        lines.push(
+          `${loaded}件をスプレッドシートに送りました（新規${added}件／更新${updated}件）。` +
+            (spreadsheet ? `反映先：「${spreadsheet}」の ${[...sheetNames].join("、")}` : "")
+        );
+        if (loaded < total) lines.push(`※ ${total - loaded}件は予約情報を読み込めず、反映されていません。`);
+      }
+      setSyncMessage(lines.join("\n"));
+      setSyncLink(url);
     } catch (e) {
       setSyncMessage(`反映に失敗しました（${e instanceof Error ? e.message : "通信エラー"}）`);
     } finally {
@@ -213,6 +249,7 @@ export default function AdminPage() {
         return;
       }
       setSyncMessage(`${data.moved}行を「終了イベント」シートへ移動しました`);
+      setSyncLink(data.url ?? "");
     } finally {
       setArchiving(false);
     }
@@ -1028,7 +1065,17 @@ export default function AdminPage() {
             >
               {archiving ? "移動中…" : "終了したイベントを今すぐ移動"}
             </button>
-            {syncMessage && <p className="text-ink-sub text-xs mt-2">{syncMessage}</p>}
+            {syncMessage && <p className="text-ink-sub text-xs mt-2 whitespace-pre-wrap">{syncMessage}</p>}
+            {syncLink && (
+              <a
+                href={syncLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-xs text-org-text underline underline-offset-2 mt-1"
+              >
+                スプレッドシートを開く
+              </a>
+            )}
           </div>
         </section>
 
