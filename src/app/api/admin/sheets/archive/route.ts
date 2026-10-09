@@ -16,6 +16,9 @@ export async function POST(req: Request) {
     if (result.skipped) return NextResponse.json({ error: "SHEETS_NOT_CONFIGURED" }, { status: 400 });
     return NextResponse.json({ ok: true, moved: result.moved });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "ARCHIVE_FAILED" }, { status: 500 });
+    return NextResponse.json(
+      { error: "ARCHIVE_FAILED", detail: e instanceof Error ? e.message : String(e) },
+      { status: 500 }
+    );
   }
 }

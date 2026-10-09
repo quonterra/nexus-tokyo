@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { pushReservationConfirmed } from "@/lib/line";
 import { verifyLiffProfile } from "@/lib/liff-auth";
 import { syncReservationToSheet } from "@/lib/sheets";
+
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -69,12 +71,16 @@ export async function POST(req: Request) {
     }
   }
 
-  // スプレッドシートへ反映（失敗しても予約自体は成立させる）
-  try {
-    const reservationId = (reservation as { id?: string } | null)?.id;
-    if (reservationId) await syncReservationToSheet(reservationId);
-  } catch {
-    // シート連携の失敗は予約を妨げない
+  // スプレッドシートへの反映は、お客様への返答を待たせないよう、返答のあとで実行する
+  const reservationId = (reservation as { id?: string } | null)?.id;
+  if (reservationId) {
+    after(async () => {
+      try {
+        await syncReservationToSheet(reservationId);
+      } catch (e) {
+        console.error("スプレッドシート反映に失敗(予約)", e instanceof Error ? e.message : e);
+      }
+    });
   }
 
   return NextResponse.json({ reservation });

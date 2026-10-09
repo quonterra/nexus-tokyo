@@ -163,20 +163,32 @@ export default function AdminPage() {
     setSyncing(true);
     setSyncMessage("");
     try {
-      const res = await fetch("/api/admin/sheets/sync", {
-        method: "POST",
-        headers: { "x-admin-password": password },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSyncMessage(
-          data.error === "SHEETS_NOT_CONFIGURED"
-            ? "スプレッドシート連携がまだ設定されていません（環境変数の登録が必要です）"
-            : "反映に失敗しました"
-        );
-        return;
+      let offset = 0;
+      let total = 0;
+      // 少しずつ送る（一度に全件だとスプレッドシート側の処理が間に合わないため）
+      for (;;) {
+        const res = await fetch("/api/admin/sheets/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin-password": password },
+          body: JSON.stringify({ offset, limit: 3 }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setSyncMessage(
+            data.error === "SHEETS_NOT_CONFIGURED"
+              ? "スプレッドシート連携がまだ設定されていません（環境変数の登録が必要です）"
+              : `反映に失敗しました（${data.detail ?? `エラーコード ${res.status}`}）`
+          );
+          return;
+        }
+        total = data.total;
+        if (data.done) break;
+        offset = data.nextOffset;
+        setSyncMessage(`反映中… ${Math.min(offset, total)} / ${total} 件`);
       }
-      setSyncMessage(`${data.count}件の予約をスプレッドシートに反映しました`);
+      setSyncMessage(`${total}件の予約をスプレッドシートに反映しました`);
+    } catch (e) {
+      setSyncMessage(`反映に失敗しました（${e instanceof Error ? e.message : "通信エラー"}）`);
     } finally {
       setSyncing(false);
     }
@@ -196,7 +208,7 @@ export default function AdminPage() {
         setSyncMessage(
           data.error === "SHEETS_NOT_CONFIGURED"
             ? "スプレッドシート連携がまだ設定されていません"
-            : "移動に失敗しました"
+            : `移動に失敗しました（${data.detail ?? `エラーコード ${res.status}`}）`
         );
         return;
       }

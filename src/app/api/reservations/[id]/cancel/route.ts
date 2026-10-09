@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { verifyLiffProfile } from "@/lib/liff-auth";
 import { pushCancellationConfirmed, notifyAdminCancellation } from "@/lib/line";
 import { syncCancellationToSheet } from "@/lib/sheets";
+
+export const maxDuration = 60;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -59,11 +61,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // 通知の失敗でキャンセル処理自体は失敗させない
   }
 
-  try {
-    await syncCancellationToSheet(id);
-  } catch {
-    // シート連携の失敗でキャンセル処理自体は失敗させない
-  }
+  // スプレッドシートへの反映は、返答のあとで実行する（失敗してもキャンセル自体は成立）
+  after(async () => {
+    try {
+      await syncCancellationToSheet(id);
+    } catch (e) {
+      console.error("スプレッドシート反映に失敗(キャンセル)", e instanceof Error ? e.message : e);
+    }
+  });
 
   return NextResponse.json({ reservation: data });
 }

@@ -23,12 +23,14 @@ function sheetsConfig() {
   return { url, token };
 }
 
+const SHEET_TIMEOUT_MS = 50000;
+
 async function postToSheet(body: Record<string, unknown>) {
   const config = sheetsConfig();
   if (!config) return { skipped: true as const };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), SHEET_TIMEOUT_MS);
   try {
     const res = await fetch(config.url, {
       method: "POST",
@@ -38,7 +40,28 @@ async function postToSheet(body: Record<string, unknown>) {
       signal: controller.signal,
     });
     const text = await res.text();
-    return { skipped: false as const, ok: res.ok, text };
+
+    // Apps Script の応答を確認し、失敗なら原因が分かる形でエラーにする
+    if (!res.ok) throw new Error(`Apps Scriptが HTTP ${res.status} を返しました`);
+    let parsed: { ok?: boolean; error?: string } | null = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`Apps Scriptの応答が想定外です（${text.replace(/\s+/g, " ").slice(0, 80)}）`);
+    }
+    if (parsed?.ok === false) {
+      throw new Error(
+        parsed.error === "unauthorized"
+          ? "合言葉が一致しません（VercelのSHEETS_WEBHOOK_TOKENとApps ScriptのTOKENを揃えてください）"
+          : `Apps Script側でエラー：${parsed.error ?? "不明"}`
+      );
+    }
+    return { skipped: false as const, ok: true, text };
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(`Apps Scriptの応答が${SHEET_TIMEOUT_MS / 1000}秒以内に返りませんでした`);
+    }
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -132,26 +155,39 @@ export async function syncCancellationToSheet(reservationId: string) {
   await postToSheet({ action: "cancel", reservation });
 }
 
-/** 確定済みの予約をまとめてシートに反映（初回の一括同期用） */
-export async function syncAllConfirmedReservationsToSheet() {
-  if (!sheetsConfig()) return { skipped: true as const, count: 0 };
+/**
+ * 確定済みの予約を、少しずつ（limit件ずつ）シートに反映する。
+ * 1回で全件を送ると Apps Script の処理が間に合わず失敗するため、画面側から繰り返し呼び出す。
+ */
+export async function syncReservationsChunkToSheet(offset: number, limit: number) {
+  if (!sheetsConfig()) return { skipped: true as const };
 
   const supabase = supabaseAdmin();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("reservations")
     .select("id")
     .eq("status", "confirmed")
     .order("created_at", { ascending: true });
+  if (error) throw new Error(`予約の取得に失敗しました：${error.message}`);
+
+  const ids = (data ?? []).map((r) => r.id as string);
+  const slice = ids.slice(offset, offset + limit);
 
   const items: SheetReservation[] = [];
-  for (const r of data ?? []) {
-    const item = await loadReservation(r.id);
+  for (const id of slice) {
+    const item = await loadReservation(id);
     if (item) items.push(item);
   }
-  if (items.length === 0) return { skipped: false as const, count: 0 };
+  if (items.length > 0) await postToSheet({ action: "bulk", reservations: items });
 
-  await postToSheet({ action: "bulk", reservations: items });
-  return { skipped: false as const, count: items.length };
+  const nextOffset = offset + slice.length;
+  return {
+    skipped: false as const,
+    total: ids.length,
+    processed: items.length,
+    nextOffset,
+    done: nextOffset >= ids.length,
+  };
 }
 
 /** 終了したイベントの行を「終了イベント」シートへ移動する */
