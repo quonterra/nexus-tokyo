@@ -67,14 +67,23 @@ export function buildEventsCarouselMessage(events: UpcomingEvent[]) {
       footer: {
         type: "box" as const,
         layout: "vertical" as const,
+        spacing: "sm" as const,
         contents: [
+          {
+            type: "text" as const,
+            text: "ボタンを押しても、まだ予約は確定しません",
+            size: "xs" as const,
+            color: "#8A8A8E",
+            align: "center" as const,
+            wrap: true,
+          },
           {
             type: "button" as const,
             style: "primary" as const,
             color: "#FF6600",
             action: {
               type: "uri" as const,
-              label: "予約する",
+              label: "予約詳細を見る",
               uri: `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}?event=${event.id}`,
             },
           },
