@@ -8,6 +8,7 @@
   python3 design/convert-gallery.py
 
 長辺1200px・品質80を基準に、1枚200KB以下になるまで品質を少しずつ下げます。
+EXIF（撮影位置・日時など）は書き出し時にすべて除去します。
 変換後、public/index.html のGALLERYセクションに1行追記すれば表示されます。
 """
 import os
@@ -33,8 +34,11 @@ def convert(path, out):
     im = im.convert("RGB")
     if max(im.size) > MAX_EDGE:
         im.thumbnail((MAX_EDGE, MAX_EDGE), Image.LANCZOS)
+    # 撮影位置・日時などのメタデータは公開しないので、書き出す前にすべて落とします
+    im.info = {}
     for q in QUALITIES:
-        im.save(out, "WEBP", quality=q, method=6)
+        im.save(out, "WEBP", quality=q, method=6,
+                exif=b"", xmp=b"", icc_profile=None)
         size = os.path.getsize(out)
         if size <= MAX_BYTES:
             return im.size, q, size
