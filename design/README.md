@@ -36,7 +36,7 @@ python3 design/convert-gallery.py
 - `alt` … 写真の内容の説明（読み上げと、拡大表示時のキャプションに使われます）
 - `<span class="gallery-tag">` … 左下に出る小さなタグ。不要なら `<span>` ごと削除してください
 
-写真は4:3の枠に中央を基準に収まります。端の人が切れてしまうときは、その1枚だけ表示位置をずらせます。
+写真は3:2の枠に中央を基準に収まります。端の人が切れてしまうときは、その1枚だけ表示位置をずらせます。
 
 ```html
 <button class="gallery-item" type="button" style="--pos:50% 30%"> ... </button>
