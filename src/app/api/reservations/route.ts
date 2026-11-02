@@ -1,8 +1,10 @@
 import { NextResponse, after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { pushReservationConfirmed } from "@/lib/line";
+import { pushReservationConfirmed, pushUnpaidFeeReminder } from "@/lib/line";
 import { verifyLiffProfile } from "@/lib/liff-auth";
 import { syncReservationToSheet } from "@/lib/sheets";
+import { getSettings, getUnpaidCancelFees } from "@/lib/cancel-fee";
+import { extractGender, pickFee } from "@/lib/fees";
 
 export const maxDuration = 60;
 
@@ -26,6 +28,26 @@ export async function POST(req: Request) {
   }
 
   const supabase = supabaseAdmin();
+
+  // 前回の当日キャンセル料が未払いの場合は、新しい予約を受け付けない
+  const unpaid = await getUnpaidCancelFees(profile.userId);
+  if (unpaid.total > 0) {
+    const settings = await getSettings();
+    try {
+      await pushUnpaidFeeReminder({
+        lineUserId: profile.userId,
+        total: unpaid.total,
+        items: unpaid.items,
+        paymentInstructions: settings.paymentInstructions,
+      });
+    } catch {
+      // 通知の失敗でも、予約を止めること自体は変わらない
+    }
+    return NextResponse.json(
+      { error: "UNPAID_CANCEL_FEE", amount: unpaid.total, paymentInstructions: settings.paymentInstructions },
+      { status: 402 }
+    );
+  }
 
   const { data: reservation, error } = await supabase
     .rpc("reserve_slot", {
@@ -53,7 +75,7 @@ export async function POST(req: Request) {
   // 予約確定後、イベント情報を取得してLINEに確認メッセージをプッシュ
   const { data: slot } = await supabase
     .from("slots")
-    .select("starts_at, events ( title, location )")
+    .select("starts_at, events ( title, location, fee, fee_male, fee_female )")
     .eq("id", slotId)
     .single();
 
@@ -65,6 +87,7 @@ export async function POST(req: Request) {
         eventTitle: event.title,
         startsAt: new Date(slot.starts_at),
         location: event.location,
+        hasFee: pickFee(event, extractGender(answers)) > 0,
       });
     } catch {
       // プッシュ通知の失敗は予約自体を失敗させない

@@ -30,11 +30,24 @@ type QuestionDraft = {
   options: string;
   required: boolean;
 };
+type CancelFeeRow = {
+  id: string;
+  amount: number;
+  status: string;
+  cancelledAt: string | null;
+  paidAt: string | null;
+  attendeeName: string;
+  lineDisplayName: string;
+  eventTitle: string;
+  eventStartsAt: string | null;
+};
 type AttendeeRow = {
   id: string;
   status: string;
   answers: Record<string, string>;
   attendeeName: string | null;
+  cancelFee: number;
+  cancelFeeStatus: string;
   createdAt: string;
   slotStartsAt: string | null;
   displayName: string;
@@ -78,6 +91,16 @@ export default function AdminPage() {
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [attendees, setAttendees] = useState<Record<string, AttendeeRow[]>>({});
   const [attendeesLoading, setAttendeesLoading] = useState<string | null>(null);
+
+  const [cancelFees, setCancelFees] = useState<{ unpaid: CancelFeeRow[]; resolved: CancelFeeRow[] }>({
+    unpaid: [],
+    resolved: [],
+  });
+  const [feeMessage, setFeeMessage] = useState("");
+  const [policyText, setPolicyText] = useState("");
+  const [paymentText, setPaymentText] = useState("");
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const [couponCode, setCouponCode] = useState("");
   const [couponResult, setCouponResult] = useState<{
@@ -463,6 +486,72 @@ export default function AdminPage() {
       setAttendeesLoading(null);
     }
   }
+
+  async function loadCancelFees() {
+    try {
+      const res = await fetch("/api/admin/cancel-fees", { headers: { "x-admin-password": password } });
+      if (!res.ok) return;
+      const data = await res.json();
+      setCancelFees({ unpaid: data.unpaid ?? [], resolved: data.resolved ?? [] });
+    } catch {
+      // 読み込みに失敗しても、他の機能には影響しない
+    }
+  }
+
+  async function loadSettings() {
+    try {
+      const res = await fetch("/api/admin/settings", { headers: { "x-admin-password": password } });
+      if (!res.ok) return;
+      const data = await res.json();
+      setPolicyText(data.cancelPolicyText ?? "");
+      setPaymentText(data.paymentInstructions ?? "");
+    } catch {
+      // 読み込みに失敗しても、他の機能には影響しない
+    }
+  }
+
+  async function changeFeeStatus(row: CancelFeeRow, action: "paid" | "waived" | "unpaid") {
+    const label = action === "paid" ? "入金済み" : action === "waived" ? "免除" : "未払い";
+    const note =
+      action === "unpaid"
+        ? ""
+        : "\nお客様には、LINEで「確認しました／免除しました」の通知が届きます。";
+    if (!window.confirm(`${row.attendeeName || row.lineDisplayName}さんの当日キャンセル料（${row.amount.toLocaleString()}円）を「${label}」にします。よろしいですか？${note}`)) return;
+    setFeeMessage("");
+    const res = await fetch(`/api/admin/cancel-fees/${row.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-password": password },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) {
+      setFeeMessage("更新に失敗しました");
+      return;
+    }
+    await loadCancelFees();
+  }
+
+  async function handleSaveSettings() {
+    setSavingSettings(true);
+    setSettingsMessage("");
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ cancelPolicyText: policyText, paymentInstructions: paymentText }),
+      });
+      setSettingsMessage(res.ok ? "保存しました" : "保存に失敗しました（SupabaseのSQL実行が済んでいるか確認してください）");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  useEffect(() => {
+    if (authed) {
+      loadCancelFees();
+      loadSettings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
 
   async function handleLookupCoupon() {
     if (!couponCode.trim()) return;
@@ -919,6 +1008,12 @@ export default function AdminPage() {
                               {a.status === "cancelled" ? "キャンセル済み" : "予約中"}
                             </span>
                           </div>
+                          {a.cancelFee > 0 && (
+                            <div className="text-[11px] text-amber-800 mt-0.5">
+                              当日キャンセル：{a.cancelFee.toLocaleString()}円（
+                              {a.cancelFeeStatus === "paid" ? "入金済み" : a.cancelFeeStatus === "waived" ? "免除" : "未払い"}）
+                            </div>
+                          )}
                           <div className="text-[10px] text-ink-hint mt-0.5">
                             {new Intl.DateTimeFormat("ja-JP", {
                               timeZone: "Asia/Tokyo",
@@ -951,6 +1046,124 @@ export default function AdminPage() {
             {events.length === 0 && !loading && (
               <p className="text-ink-hint text-xs">まだイベントが登録されていません。</p>
             )}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+            <span className="inline-block w-1 h-4 bg-org rounded-full" />
+            当日キャンセル料
+          </h2>
+          <div className="bg-white rounded-xl shadow-s p-4">
+            <p className="text-ink-sub text-xs mb-3">
+              開催日当日にキャンセルされた予約は、参加費全額が「未払い」として記録されます。未払いのお客様は、お支払いを確認して「入金済み」にするまで、新しいイベントを予約できません（お客様には、予約しようとしたときに、LINEでお知らせが届きます）。
+            </p>
+            {feeMessage && <p className="text-org-text text-xs mb-2">{feeMessage}</p>}
+            {cancelFees.unpaid.length === 0 ? (
+              <p className="text-ink-hint text-xs">現在、未払いの当日キャンセル料はありません。</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {cancelFees.unpaid.map((r) => (
+                  <div key={r.id} className="rounded-lg bg-amber-50 px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-ink">
+                        {r.attendeeName || "(未入力)"}
+                        <span className="text-ink-hint font-normal ml-1.5">（LINE：{r.lineDisplayName}）</span>
+                      </span>
+                      <span className="text-sm font-semibold text-amber-900">{r.amount.toLocaleString()}円</span>
+                    </div>
+                    <div className="text-[11px] text-ink-sub mt-0.5">
+                      {r.eventTitle}
+                      {r.cancelledAt &&
+                        `／${new Intl.DateTimeFormat("ja-JP", {
+                          timeZone: "Asia/Tokyo",
+                          month: "numeric",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }).format(new Date(r.cancelledAt))}にキャンセル`}
+                    </div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <button
+                        onClick={() => changeFeeStatus(r, "paid")}
+                        className="rounded-lg bg-org text-white text-xs font-medium px-3 py-1.5"
+                      >
+                        入金済みにする
+                      </button>
+                      <button
+                        onClick={() => changeFeeStatus(r, "waived")}
+                        className="text-xs text-ink-sub underline underline-offset-2"
+                      >
+                        免除する
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {cancelFees.resolved.length > 0 && (
+              <div className="mt-4 border-t border-gray-line pt-3">
+                <p className="text-ink-hint text-[11px] mb-2">対応済み（直近20件）</p>
+                <div className="flex flex-col gap-1.5">
+                  {cancelFees.resolved.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between gap-2 text-[11px] text-ink-sub">
+                      <span>
+                        {r.attendeeName || r.lineDisplayName}／{r.eventTitle}／{r.amount.toLocaleString()}円（
+                        {r.status === "paid" ? "入金済み" : "免除"}）
+                      </span>
+                      <button
+                        onClick={() => changeFeeStatus(r, "unpaid")}
+                        className="text-ink-hint underline underline-offset-2 shrink-0"
+                      >
+                        未払いに戻す
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3">
+            <span className="inline-block w-1 h-4 bg-org rounded-full" />
+            キャンセル規定・お支払い案内の文言
+          </h2>
+          <div className="bg-white rounded-xl shadow-s p-4 flex flex-col gap-3">
+            <div>
+              <label className="text-xs font-medium text-ink-sub mb-1 block">
+                キャンセル規定（参加費があるイベントの予約画面に表示されます）
+              </label>
+              <textarea
+                value={policyText}
+                onChange={(e) => setPolicyText(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-ink-sub mb-1 block">
+                お支払い方法の案内（当日キャンセルの通知・未払いのお知らせに入ります）
+              </label>
+              <textarea
+                value={paymentText}
+                onChange={(e) => setPaymentText(e.target.value)}
+                rows={3}
+                placeholder="例：〇〇銀行 △△支店 普通 1234567 ナカノタロウ宛に、お振込みください。"
+                className="w-full rounded-lg border border-gray-line px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="rounded-lg border border-org bg-white text-org-text text-xs font-medium px-3 py-1.5 hover:bg-org-pale transition disabled:opacity-50"
+              >
+                {savingSettings ? "保存中…" : "文言を保存する"}
+              </button>
+              {settingsMessage && <span className="text-ink-sub text-xs">{settingsMessage}</span>}
+            </div>
           </div>
         </section>
 

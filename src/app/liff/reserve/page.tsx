@@ -70,6 +70,11 @@ export default function ReservePage() {
   const [lineDisplayName, setLineDisplayName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // 当日キャンセル料の未払い状況と、キャンセル規定・お支払い案内の文言
+  const [unpaidTotal, setUnpaidTotal] = useState(0);
+  const [cancelPolicyText, setCancelPolicyText] = useState("");
+  const [paymentInstructions, setPaymentInstructions] = useState("");
+
   const [myReservations, setMyReservations] = useState<MyReservation[]>([]);
   const [mineLoading, setMineLoading] = useState(false);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
@@ -97,6 +102,22 @@ export default function ReservePage() {
           setLineDisplayName(profile.displayName ?? "");
         } catch {
           // プロフィール取得に失敗しても予約フロー自体は継続する
+        }
+
+        try {
+          const statusRes = await fetch("/api/me/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ liffAccessToken: liff.getAccessToken() }),
+          });
+          if (statusRes.ok) {
+            const status = await statusRes.json();
+            setUnpaidTotal(status.unpaidTotal ?? 0);
+            setCancelPolicyText(status.cancelPolicyText ?? "");
+            setPaymentInstructions(status.paymentInstructions ?? "");
+          }
+        } catch {
+          // 取得に失敗しても、予約画面自体は表示する（予約時にサーバー側でも確認される）
         }
 
         const params = new URLSearchParams(window.location.search);
@@ -166,7 +187,13 @@ export default function ReservePage() {
             ? "この回はちょうど満席になりました。別の回をお選びください。"
             : data.error === "ALREADY_RESERVED"
               ? "このイベントはすでに予約済みです。予約一覧からご確認ください。"
-              : "予約に失敗しました。時間をおいて再度お試しください。";
+              : data.error === "UNPAID_CANCEL_FEE"
+                ? `前回の当日キャンセル分（${Number(data.amount ?? 0).toLocaleString()}円）のお支払いが確認できていないため、ご予約いただけません。`
+                : "予約に失敗しました。時間をおいて再度お試しください。";
+        if (data.error === "UNPAID_CANCEL_FEE") {
+          setUnpaidTotal(Number(data.amount ?? 0));
+          if (data.paymentInstructions) setPaymentInstructions(data.paymentInstructions);
+        }
         setErrorMessage(message);
         return;
       }
@@ -315,6 +342,7 @@ export default function ReservePage() {
     return (
       <Shell>
         <TopNav onBack={() => setStep("list")} onMine={loadMine} />
+        {unpaidTotal > 0 && <UnpaidBanner total={unpaidTotal} instructions={paymentInstructions} />}
         <h1 className="text-lg font-semibold text-ink mb-1">{selectedEvent.title}</h1>
         {selectedEvent.fee_male != null || selectedEvent.fee_female != null ? (
           <p className="text-sm font-medium text-ink mb-2">
@@ -434,14 +462,21 @@ export default function ReservePage() {
           );
         })()}
 
+        {/* 参加費があるイベントは、予約の前にキャンセル規定を表示する */}
+        {(selectedEvent.fee ?? 0) + (selectedEvent.fee_male ?? 0) + (selectedEvent.fee_female ?? 0) > 0 && cancelPolicyText && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <p className="text-xs text-amber-900 whitespace-pre-wrap">{cancelPolicyText}</p>
+          </div>
+        )}
+
         {errorMessage && <p className="text-org-text text-xs mb-3">{errorMessage}</p>}
 
         <button
-          disabled={!slot || isFull || submitting}
+          disabled={!slot || isFull || submitting || unpaidTotal > 0}
           onClick={submitReservation}
           className="w-full rounded-xl bg-org text-white font-medium py-3 text-sm shadow-org disabled:opacity-40"
         >
-          {submitting ? "送信中…" : "この内容で予約する"}
+          {submitting ? "送信中…" : unpaidTotal > 0 ? "お支払い確認後にご予約いただけます" : "この内容で予約する"}
         </button>
       </Shell>
     );
@@ -450,6 +485,7 @@ export default function ReservePage() {
   return (
     <Shell>
       <TopNav onMine={loadMine} />
+      {unpaidTotal > 0 && <UnpaidBanner total={unpaidTotal} instructions={paymentInstructions} />}
       <h1 className="text-lg font-semibold text-ink mb-4">開催予定のイベント</h1>
       {events.length === 0 ? (
         <p className="text-ink-sub text-sm">現在予約可能なイベントはありません。</p>
@@ -509,6 +545,17 @@ function TopNav({ onBack, onMine }: { onBack?: () => void; onMine?: () => void }
           予約の確認・キャンセルはこちら
         </button>
       )}
+    </div>
+  );
+}
+
+function UnpaidBanner({ total, instructions }: { total: number; instructions: string }) {
+  return (
+    <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+      <p className="text-sm font-semibold text-amber-900">前回の当日キャンセル分のお支払いが確認できていません</p>
+      <p className="text-sm text-amber-900 mt-1">未払い金額：{total.toLocaleString()}円</p>
+      <p className="text-xs text-amber-900 mt-1">お支払いの確認ができるまで、新しいイベントのご予約はできません。</p>
+      {instructions && <p className="text-xs text-ink-sub mt-2 whitespace-pre-wrap">{instructions}</p>}
     </div>
   );
 }

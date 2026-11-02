@@ -195,6 +195,7 @@ export async function pushReservationConfirmed(params: {
   eventTitle: string;
   startsAt: Date;
   location: string | null;
+  hasFee?: boolean; // 参加費があるイベントか（キャンセル規定の注意書きを出す）
 }) {
   const client = lineClient();
   const dateLabel = new Intl.DateTimeFormat("ja-JP", {
@@ -246,6 +247,17 @@ export async function pushReservationConfirmed(params: {
             layout: "vertical",
             spacing: "sm",
             contents: [
+              ...(params.hasFee
+                ? [
+                    {
+                      type: "text",
+                      text: "※開催日当日のキャンセルは、参加費全額のお支払いが必要です。",
+                      size: "xs",
+                      color: "#B45309",
+                      wrap: true,
+                    } as const,
+                  ]
+                : []),
               {
                 type: "text",
                 text: "予定が合わなくなった場合は、こちらからキャンセルできます。",
@@ -342,7 +354,10 @@ export async function pushCancellationConfirmed(params: {
   eventTitle: string;
   startsAt: Date;
   location: string | null;
+  cancelFee?: number; // 当日キャンセルで発生した金額（0または未指定なら案内なし）
+  paymentInstructions?: string;
 }) {
+  const hasFee = (params.cancelFee ?? 0) > 0;
   const client = lineClient();
   const dateLabel = new Intl.DateTimeFormat("ja-JP", {
     timeZone: "Asia/Tokyo",
@@ -352,6 +367,40 @@ export async function pushCancellationConfirmed(params: {
     hour: "2-digit",
     minute: "2-digit",
   }).format(params.startsAt);
+
+  const feeBox: messagingApi.FlexComponent = {
+                      type: "box",
+                      layout: "vertical",
+                      backgroundColor: "#FEF3C7",
+                      cornerRadius: "8px",
+                      paddingAll: "12px",
+                      margin: "md",
+                      spacing: "xs",
+                      contents: [
+                        {
+                          type: "text",
+                          text: `当日キャンセルのため、参加費全額 ${(params.cancelFee ?? 0).toLocaleString("ja-JP")}円 のお支払いが必要です。`,
+                          size: "sm",
+                          weight: "bold",
+                          color: "#92400E",
+                          wrap: true,
+                        },
+                        {
+                          type: "text",
+                          text: "お支払いが確認できるまで、次回以降のイベントにはご予約いただけません。",
+                          size: "xs",
+                          color: "#92400E",
+                          wrap: true,
+                        },
+                        {
+                          type: "text",
+                          text: params.paymentInstructions ?? "",
+                          size: "xs",
+                          color: "#555555",
+                          wrap: true,
+                        },
+                      ],
+                    };
 
   await client.pushMessage({
     to: params.lineUserId,
@@ -364,10 +413,16 @@ export async function pushCancellationConfirmed(params: {
           header: {
             type: "box",
             layout: "vertical",
-            backgroundColor: "#8A8A8E",
+            backgroundColor: hasFee ? "#B45309" : "#8A8A8E",
             paddingAll: "16px",
             contents: [
-              { type: "text", text: "予約をキャンセルしました", color: "#FFFFFF", weight: "bold", size: "md" },
+              {
+                type: "text",
+                text: hasFee ? "当日キャンセルを受け付けました" : "予約をキャンセルしました",
+                color: "#FFFFFF",
+                weight: "bold",
+                size: "md",
+              },
             ],
           },
           body: {
@@ -380,13 +435,17 @@ export async function pushCancellationConfirmed(params: {
               ...(params.location
                 ? [{ type: "text", text: params.location, size: "sm", color: "#555555", wrap: true } as const]
                 : []),
-              {
-                type: "text",
-                text: "またのご参加をお待ちしております。",
-                size: "xs",
-                color: "#8A8A8E",
-                margin: "md",
-              },
+              ...(hasFee
+                ? [feeBox]
+                : [
+                    {
+                      type: "text",
+                      text: "またのご参加をお待ちしております。",
+                      size: "xs",
+                      color: "#8A8A8E",
+                      margin: "md",
+                    } as const,
+                  ]),
             ],
           },
         },
@@ -400,6 +459,7 @@ export async function notifyAdminCancellation(params: {
   startsAt: Date;
   attendeeName: string | null;
   lineDisplayName: string;
+  cancelFee?: number;
 }) {
   const adminUserId = process.env.ADMIN_LINE_USER_ID;
   if (!adminUserId) return; // 未設定なら何もしない
@@ -419,7 +479,11 @@ export async function notifyAdminCancellation(params: {
     messages: [
       {
         type: "text",
-        text: `【予約キャンセル通知】\n${params.eventTitle}（${dateLabel}）\n予約者：${params.attendeeName ?? "(未入力)"}（LINE：${params.lineDisplayName}）`,
+        text:
+          `${(params.cancelFee ?? 0) > 0 ? "【当日キャンセル・要請求】" : "【予約キャンセル通知】"}\n${params.eventTitle}（${dateLabel}）\n予約者：${params.attendeeName ?? "(未入力)"}（LINE：${params.lineDisplayName}）` +
+          ((params.cancelFee ?? 0) > 0
+            ? `\n請求額：${(params.cancelFee ?? 0).toLocaleString("ja-JP")}円（管理画面の「当日キャンセル料」で入金確認ができます）`
+            : ""),
       },
     ],
   });
@@ -433,6 +497,47 @@ export async function pushCouponRedeemed(params: { lineUserId: string; amount: n
       {
         type: "text",
         text: `${params.amount}円クーポンをご利用いただき、ありがとうございました！またのご来店をお待ちしております。`,
+      },
+    ],
+  });
+}
+
+// 前回の当日キャンセル料が未払いの状態で、予約しようとしたときの案内
+export async function pushUnpaidFeeReminder(params: {
+  lineUserId: string;
+  total: number;
+  items: { eventTitle: string; amount: number }[];
+  paymentInstructions: string;
+}) {
+  const client = lineClient();
+  const lines = params.items
+    .map((i) => `・${i.eventTitle}：${i.amount.toLocaleString("ja-JP")}円`)
+    .join("\n");
+  await client.pushMessage({
+    to: params.lineUserId,
+    messages: [
+      {
+        type: "text",
+        text:
+          `前回の当日キャンセル分のお支払いが、まだ確認できていないようです。\n\n${lines}\n合計：${params.total.toLocaleString("ja-JP")}円\n\n` +
+          `お支払いの確認ができるまで、新しいご予約をお受けできません。\n${params.paymentInstructions}\n\n` +
+          `すでにお支払い済みの場合は、お手数ですが運営までお知らせください。`,
+      },
+    ],
+  });
+}
+
+// 入金確認・免除をしたときの、お客様への通知
+export async function pushCancelFeeResolved(params: { lineUserId: string; waived: boolean; amount: number }) {
+  const client = lineClient();
+  await client.pushMessage({
+    to: params.lineUserId,
+    messages: [
+      {
+        type: "text",
+        text: params.waived
+          ? "前回の当日キャンセル分について、今回はお支払いを免除とさせていただきました。引き続き、イベントのご予約をいただけます。"
+          : `当日キャンセル分（${params.amount.toLocaleString("ja-JP")}円）のお支払いを確認しました。ありがとうございます。引き続き、イベントのご予約をいただけます。`,
       },
     ],
   });
